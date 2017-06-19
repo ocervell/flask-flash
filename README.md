@@ -1,4 +1,4 @@
-# Flask Simple API
+# Flask Flash
 Flask API Framework to create CRUD APIs (and non-CRUD) with embedded API client.
 
 To create a new API, you need to create the following files:
