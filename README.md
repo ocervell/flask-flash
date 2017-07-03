@@ -6,7 +6,8 @@ Quickstart
 
 In the following we will create a CRUD (Create, Read, Update, Delete) API
 wrapping around our `User` model.
-The example is accessible in the `examples/app1` folder.
+
+The following example code is accessible from the `examples/app1` folder.
 
 **Install Flask-Flash**
 
