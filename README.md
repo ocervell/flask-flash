@@ -43,7 +43,7 @@ class User(CRUD):
     schema = UserSchema
 ```
 
-`app/manage.py` - Flash app basic initialization (config and routes).
+`app/manage.py` - Basic initialization of our `Flash` app (config and routes).
 
 ```
 from flask_flash import Flash
@@ -51,10 +51,10 @@ from .resources import User
 
 config = { 'default': BaseConfig }
 routes = [ User ]
-app = Flash(config, routes)
+flash = Flash(config, routes)
 
 if __name__ == '__main__':
-    app.manager.run()
+    flash.manager.run()
 ```
 
 **Run your API**
