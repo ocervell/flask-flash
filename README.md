@@ -1,8 +1,11 @@
 # Flask-Flash
 Flask API Framework to create database-driven CRUD APIs (and non-CRUD) with embedded API client.
 
-Quick setup
+Quickstart
 -----------
+
+In the following we will create a CRUD (Create, Read, Update, Delete) API
+wrapping around our `User` model.
 
 **Install Flask-Flash**
 
@@ -13,9 +16,8 @@ Quick setup
 
 Create your app folder with the following structure:
 
-`app/models.py`
+`app/models.py` - Definition of database models and Marshmallow schemas.
 
-Define your database model and Marshmallow schema.
 ```
 from flask_flash.extensions import db, ma
 
@@ -31,9 +33,7 @@ class UserSchema(ma.ModelSchema):
     password = db.Field(required=True)
 ```
 
-`app/resources.py`
-
-Let's create the API endpoints corresponding to the `User` model.
+`app/resources.py` - Definition of API endpoints.
 ```
 from flask_flash import CRUD
 from models import User, UserSchema
@@ -43,9 +43,7 @@ class User(CRUD):
     schema = UserSchema
 ```
 
-`app/manage.py`
-
-Basic initialisation of the Flask app goes here (config and routes).
+`app/manage.py` - Flash app basic initialization (config and routes).
 
 ```
 from flask_flash import Flash
