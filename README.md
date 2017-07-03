@@ -176,12 +176,12 @@ The next example shows how to subclass `CRUDEndpoint` to add a method to it:
 
 ```
 class UserEndpoint(CRUDEndpoint):
-  	def reverse_username(user_id):
+    def reverse_username(user_id):
       	user = self.get(user_id)
         return self.update(user_id, username=user['username'].reverse())
 
 class MyClient(BaseClient):
-	@property
+    @property
     def users(self):
     	  return UserEndpoint(self, '/user/<id>', '/users')
 
