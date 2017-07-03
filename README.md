@@ -162,7 +162,7 @@ c.users.get(page=1, per_page=100) # get 100 first results
 Instead of adding the endpoints using `add` like above, Flask-Flash API client can be modified to add your own endpoints by subclassing `BaseClient`.
 ```
 class MyClient(BaseClient):
-	@property
+    @property
     def users(self):
     	return CRUDEndpoint(self, '/user/<id>', '/users')
 
