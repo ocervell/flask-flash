@@ -71,11 +71,15 @@ At this point you can test your API with cURL:
 
 *Create user:*
 
-`curl -X POST -d {'username': 'John', 'password': '@kj!4la'}`
+`curl -X POST -H "Content-Type:application/json" -d {'username': 'John', 'password': '@kj!4la'}`
 
 *Get user 1:*
 
 `curl localhost:5001/api/user/1`
+
+*Get first 20 users:*
+
+`curl localhost:5001/api/users`
 
 Check the docs to see the advanced list of options for URL queries.
 
