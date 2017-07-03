@@ -27,7 +27,7 @@ class UserModel(db.Model):
     password = db.Column(db.String(32))
 
 class UserSchema(ma.ModelSchema):
-  	class Meta:
+    class Meta:
         model = User # link schema with model
     username = db.Field(required=True)
     password = db.Field(required=True)
