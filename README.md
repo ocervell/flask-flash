@@ -18,7 +18,7 @@ The following example code is accessible from the `examples/app1` folder.
 
 Create your app folder with the following structure:
 
-`app/models.py` - Definition of database models and Marshmallow schemas.
+`app/models.py` - *Definition of database models and Marshmallow schemas.*
 
 ```
 from flask_flash.extensions import db, ma
@@ -35,7 +35,7 @@ class UserSchema(ma.ModelSchema):
     password = db.Field(required=True)
 ```
 
-`app/resources.py` - Definition of API endpoints.
+`app/resources.py` - *Definition of API endpoints.*
 ```
 from flask_flash import CRUD
 from models import User, UserSchema
@@ -45,7 +45,7 @@ class User(CRUD):
     schema = UserSchema
 ```
 
-`app/manage.py` - Basic initialization of our `Flash` app (config and routes).
+`app/manage.py` - *Basic initialization of our `Flash` app (config and routes).*
 
 ```
 #!/usr/bin/env python
