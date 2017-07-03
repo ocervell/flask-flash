@@ -1,16 +1,32 @@
 import logging, pprint, json, yaml, time
-from flask import g, request, Response, url_for, jsonify
+from flask import g, request, Response, url_for, jsonify, current_app
 from flask_restful import abort, Resource
 from flask_restful.reqparse import RequestParser
 from redis import Redis
 from sqlalchemy import desc, asc
-from extensions import db, auth
+from extensions import db, auth, cache
 from utils import *
 from datetime import datetime
+from sqlalchemy.inspection import inspect
 
 log = logging.getLogger(__name__)
 log_access = logging.getLogger(__name__ + '_access')
 pp = pprint.PrettyPrinter(indent=4)
+
+#----------------#
+# Regparse types #
+#----------------#
+def liststr(value):
+    try:
+        return value.split(',')
+    except:
+        return value
+
+def jsonlist(value):
+    try:
+        return yaml.safe_load(value)
+    except:
+        return []
 
 #----------------#
 # API Exceptions #
@@ -124,29 +140,63 @@ class CRUD(Resource):
         '>': 'gt',
         '!=': 'ne'
     }
-    METHODS = ['head', 'get', 'put', 'post', 'delete']
 
-    # parser = RequestParser()
-    # parser.add_argument('page', type=int, default=1, location='args')
-    # parser.add_argument('per_page', type=int, default=10, location='args')
-    # parser.add_argument('paginate', type=bool, default=True, location='args')
-    # parser.add_argument('order_by', type=str, default='', location='args')
-    # parser.add_argument('sort', type=str, default='asc', choices=['asc', 'desc'], location='args')
+    # Overridable defaults
+    methods = ['GET', 'POST', 'PUT', 'DELETE']
+    cache_timeout = 10 # seconds
+    cache_key_prefix = cache_key
+    cache_disabled = cache_disabled_url
+
+    def __init__(self):
+        # Decorate get function to enable caching
+        self.get = cache.cached(
+            timeout=self.cache_timeout,
+            key_prefix=self.cache_key_prefix,
+            unless=self.cache_disabled)(self.get)
+
+        # Set primary key name directly from db model
+        self.pk = inspect(self.model).primary_key[0].name
+        self.model_title = self.model.__name__.title()
+        self.q = self.model.query
+        self.columns = [column.key for column in inspect(self.model).attrs]
+        self.excluded_fields = self._get_excluded_fields()
+        self.parser = RequestParser()
+        for c in self.columns:
+            self.parser.add_argument(c, type=liststr, default=None, location='args')
+        self.parser.add_argument('page',     type=int, default=1, location='args')
+        self.parser.add_argument('per_page', type=int, default=10, location='args')
+        self.parser.add_argument('paginate', type=bool, default=True, location='args')
+        self.parser.add_argument('order_by', type=str, default=self.pk, choices=self.columns, location='args')
+        self.parser.add_argument('sort',     type=str, default='desc', choices=['asc', 'desc'], location='args')
+        self.parser.add_argument('only',     type=liststr, default=(), location='args')
+        self.parser.add_argument('exclude',  type=liststr, default=(), location='args')
+        self.parser.add_argument('match',    type=jsonlist, default=[], location='args')
+        self.parser.add_argument('sort',     type=str, default=None, location='args')
+        self.parser.add_argument('cache',    type=bool, default=True, location='args')
+
+    def parse_args(self):
+        args = self.parser.parse_args()
+        model_filters, unique_args = {}, {}
+        for k, v in args.items():
+            if k in self.columns:
+                if v is None:
+                    continue
+                model_filters[k] = v
+            else:
+                unique_args[k] = v
+        return model_filters, unique_args
 
     def head(self):
-        query = self.model.query
-        kwargs = request.args.to_dict()
-        kwargs.pop('order_by', None)
-        kwargs.pop('sort', None)
-        config = self.parse_unique(kwargs)
-        query = self.filter_query(self.model.query, config, kwargs)
+        c, g = self.parse_args()
+        g.pop('order_by', None)
+        g.pop('sort', None)
+        self.filter_query(c, g)
         try:
-            count = query.count()
             resp = Response(mimetype='application/json')
             resp.headers = {
                 "Content-Type": "application/json",
                 "data": {
-                    "count": count
+                    "count": self.q.count()
                 }
             }
             return resp
@@ -155,31 +205,28 @@ class CRUD(Resource):
             abort(500, message='%s - %s' % (type(e).__name__, str(e)))
 
     def get(self, id=None):
-        start = time.time()
-        model_name = self.model.__name__.title()
-        kwargs = request.args.to_dict()
-        many = True
         try:
+            start = time.time()
+            c, g = self.parse_args()
             if id is not None:
                 many = False
-                elems = self.model.query.get(id)
+                elems = self.q.get(id)
                 if not elems or elems is None:
-                    raise ResourceNotFound(model_name, id)
-                return self.schema().jsonify(elems)
+                    raise ResourceNotFound(self.model_title, id)
             else:
-                config = self.parse_unique(kwargs)
-                query = self.filter_query(self.model.query, config, kwargs)
-                if config['paginate']:
-                    elems = query.paginate(config['page'], config['per_page'], False).items
+                many = True
+                self.filter_query(g, c)
+                if g['paginate']:
+                    elems = self.q.paginate(g['page'], g['per_page'], False).items
                 else:
-                    elems = query.all()
+                    elems = self.q.all()
                     if not elems or elems is None:
                         return []
             end = time.time()
             log.debug("GET | {url} | {time:.4f}s".format(url=request.url, time=(end - start)))
             return self.schema(many=many,
-                               only=config['only'],
-                               exclude=config['exclude']).jsonify(elems)
+                               only=g['only'],
+                               exclude=g['exclude']).jsonify(elems)
 
         except APIException as e:
             abort(e.code, message=str(e))
@@ -190,7 +237,6 @@ class CRUD(Resource):
 
     def put(self, id=None):
         """TODO: Convert data loading to Marshmallow schema load."""
-        model_name = self.model.__name__.title()
         try:
             # Get update list
             updates = request.get_json()
@@ -208,27 +254,27 @@ class CRUD(Resource):
                     pass
 
                 # Get object id
-                oid = id or update_dict.get('id')
+                oid = id or update_dict.get(self.pk)
                 ids.append(oid)
                 if oid is None:
-                    raise MissingParameter(model_name, 'id')
-                update_dict['id'] = oid
+                    raise MissingParameter(self.model_title, self.pk)
+                update_dict[self.pk] = oid
 
                 # Done field
                 done = update_dict.get('done', False)
                 if done:
                     update_dict['end_date'] = datetime.utcnow()
-                dbo = self.model.query.get(oid)
+                dbo = self.q.get(oid)
                 if not dbo:
-                    raise ResourceNotFound(model_name, oid)
+                    raise ResourceNotFound(self.model_title, oid)
                 log.info("{model} {id} | PUT {params}".format(
-                            model=model_name, id=oid,
+                            model=self.model_title, id=oid,
                             params=reprd(update_dict)))
                 for k, v in update_dict.items():
-                    if k == 'id':
+                    if k == self.pk:
                         continue
-                    if not hasattr(self.model, k) or k in self._get_excluded_fields():
-                        raise Forbidden(model_name, k)
+                    if not hasattr(self.model, k) or k in self.excluded_fields:
+                        raise Forbidden(self.model_title, k)
                     if isinstance(v, list) or isinstance(v, dict): # JSON, convert to string
                         v = json.dumps(v)
                     if isbool(v): # bool string, convert to bool
@@ -241,9 +287,12 @@ class CRUD(Resource):
                 db.session.add(dbo)
             db.session.commit()
 
+            # Clear cache
+            self.clear_cache(id=id)
+
             # Get the updated objects from the db and return them as JSON
-            id_attr = getattr(self.model, 'id')
-            objs = self.model.query.filter(id_attr.in_(ids)).all()
+            id_attr = getattr(self.model, self.pk)
+            objs = self.q.filter(id_attr.in_(ids)).all()
             if id is not None and len(objs) == 1:
                 return self.schema().jsonify(objs[0])
             return self.schema(many=True).jsonify(objs)
@@ -255,30 +304,28 @@ class CRUD(Resource):
             log.exception(e)
             abort(500, message='%s - %s' % (type(e).__name__, str(e)))
 
-    def get_resource_url(self, **params):
-        return url_for('api.' + self.__class__.__name__.lower(), **params)
-
     def post(self):
         try:
-            model_name = self.model.__name__
             defs = request.get_json()
             if not defs:
-                raise NoPostData(model_name)
+                raise NoPostData(self.model_title)
 
             if not isinstance(defs, list):
                 defs = [defs]
 
-            log.info("{model} | POST {defs}".format(model=model_name, defs=reprd(defs)))
+            log.info("{model} | POST {defs}".format(model=self.model_title, defs=reprd(defs)))
 
             # Validation + Objects creation
             dbos, errors = self.schema(many=True).load(defs, session=db.session)
             if errors:
-                raise SchemaValidationError(model_name, errors=errors)
+                raise SchemaValidationError(self.model_title, errors=errors)
 
             # Add / Commit db objects
-            for dbo in dbos:
-                db.session.add(dbo)
+            db.session.add_all(dbos)
             db.session.commit()
+
+            # Clear cache
+            self.clear_cache()
 
             # Return created objects in JSON format
             if len(defs) == 1:
@@ -295,20 +342,19 @@ class CRUD(Resource):
             abort(500, message=str(e))
 
     def delete(self, id):
-        model_name = self.model.__name__.title()
         try:
-            dbo = self.model.query.get(id)
+            dbo = self.q.get(id)
             if not dbo:
                 return jsonify({
-                    'id': id,
+                    self.pk: id,
                     'deleted': False,
-                    'message': ResourceNotFound(model_name, id).message
+                    'message': ResourceNotFound(self.model_title, id).message
                 })
-            log.info("{model} | DELETE {id}".format(model=model_name, id=id))
+            log.info("{model} | DELETE {id}".format(model=self.model_title, id=id))
             db.session.delete(dbo)
             db.session.commit()
             return jsonify({
-                'id': id,
+                self.pk: id,
                 'deleted': True
             })
 
@@ -319,73 +365,63 @@ class CRUD(Resource):
             log.exception(e)
             abort(500, message='%s - %s' % (type(e).__name__, str(e)))
 
-    def filter_query(self, query, config, kwargs):
-        model_name = self.model.__name__.title()
-        query = self._filter_params(query, kwargs)
-        query = self._filter_matches(query, config['match'])
-        query = self._order_query(query, config['order_by'], config['sort'])
-        return query
+    def filter_query(self, g, c):
+        self._filter_columns(c)
+        self._filter_matches(g['match'])
+        self._order_query(g['order_by'], g['sort'])
 
-    def _order_query(self, query, order_by=None, sort=None):
-        model_name = self.model.__name__.title()
+    def _order_query(self, order_by=None, sort=None):
+        """Order the query and sort it based on 'order_by' and 'sort' parameters.
+
+        Args:
+            order_by: The model column to order by.
+            sort: Descending ('desc'), ascending ('asc'), or None.
+        """
         if order_by is not None:
             log.debug("Ordering query by key %s (%s)" % (order_by, sort))
             if not hasattr(self.model, order_by):
-                raise Forbidden(model_name, order_by)
+                raise Forbidden(self.model_title, order_by)
             column_obj = getattr(self.model, order_by)
             if sort == 'desc':
-                query = query.order_by(column_obj.desc())
+                self.q = self.q.order_by(column_obj.desc())
             elif sort == 'asc':
-                query = query.order_by(column_obj.asc())
+                self.q = self.q.order_by(column_obj.asc())
             else:
-                query = query.order_by(column_obj)
-        return query
+                self.q = self.q.order_by(column_obj)
 
-    def _filter_params(self, query, params):
-        """Return filtered query based on URL parameters.
+    def _filter_columns(self, params):
+        """Filter the query based on column key/value parameters.
 
-        Parameters:
-            query: The SQLAlchemy query object
-            params: A dict of parameters extracted from the request URL
-
-        Returns:
-            query: The filtered SQLAlchemy query object
+        Args:
+            query: The SQLAlchemy query object.
+            params: A list of dict columns name / value to filter on.
         """
-        # log.debug("Filters (params): \n%s" % pprint.pformat(params))
-        model_name = self.model.__name__.title()
-        params = {k: v.split(',') for k, v in params.items()}
         for k, v in params.items():
             column = getattr(self.model, k, None)
             if column is None:
                 continue
-            if k in self._get_excluded_fields():
-                raise Forbidden(model_name, k)
+            if k in self.excluded_fields:
+                raise Forbidden(self.model_title, k)
             if len(v) == 1:
                 v = v[0]
                 if isbool(v): # boolean string, convert
                     v = str2bool(v)
-                    query = query.filter(column.is_(v))
+                    self.q = self.q.filter(column.is_(v))
                     continue
                 if 'date' in k: # date, convert
                     v = datetime.strptime(v, '%Y-%m-%d %H:%M:%S')
                 log.debug("Filtering %s == %s" % (k, v))
-                query = query.filter(column == v)
+                self.q = self.q.filter(column == v)
             else:
-                query = query.filter(column.in_(v))
-        return query
+                self.q = self.q.filter(column.in_(v))
 
-    def _filter_matches(self, query, filters):
-        """Return filtered query based on filters.
+    def _filter_matches(self, filters):
+        """Filters query based on operators.
 
-        Parameters:
-            query: The SQLAlchemy query object
+        Args:
+            query: The SQLAlchemy query object.
             filters: A list of lists / tuples, ie: [[key, operator, value], ...]
-
-        Returns:
-            query: The filtered SQLAlchemy query object
         """
-        # log.debug("Filters (matches): \n%s" % pprint.pformat(filters))
-        model_name = self.model.__name__.title()  # returns the query's Model
         for raw in filters:
             try:
                 key, op, values = tuple(raw)
@@ -394,29 +430,29 @@ class CRUD(Resource):
                     values = values.split(',')
             except ValueError as e:
                 log.exception(e)
-                raise InvalidFilter(model_name, raw)
+                raise InvalidFilter(self.model_title, raw)
             column = getattr(self.model, key, None)
             if column is None:
                 continue
-            if key in self._get_excluded_fields():
-                raise Forbidden(model_name, k)
+            if key in self.excluded_fields:
+                raise Forbidden(self.model_title, k)
 
             # Handle '~' operator
             if op == '~':
-                query = query.filter(self.model.name.op('~')(values))
+                self.q = self.q.filter(self.model.name.op('~')(values))
 
             # Handle 'in' operator
             if op == 'in':
-                query = query.filter(column.in_(values))
+                self.q = self.q.filter(column.in_(values))
 
             # Handle 'between' operator
             elif op == 'between':
-                query = query.filter(column.between(values[0], values[1]))
+                self.q = self.q.filter(column.between(values[0], values[1]))
 
             # Handle 'like' operator
             elif op == 'like':
                 for v in values:
-                    query = query.filter(column.like(v + '%'))
+                    self.q = self.q.filter(column.like(v + '%'))
 
             # Handle all other operators ('==', '>=', '<=', 'like', ...)
             else:
@@ -428,35 +464,8 @@ class CRUD(Resource):
                         attr = list(filter(lambda e: hasattr(column, e % op),
                                           ['%s', '%s_', '__%s__']))[0] % op
                     except IndexError:
-                        raise FilterNotSupported(model_name, op)
-                    query = query.filter(getattr(column, attr)(v))
-        return query
-
-    def parse_unique(self, kwargs):
-        # TODO: Replace the following 10 lines by a RequestParser instance.
-        paginate = str2bool(kwargs.pop('paginate', 'True'))
-        per_page = int(kwargs.pop('per_page', '10'))
-        page = int(kwargs.pop('page', '1'))
-        only = [f for f in tuple(kwargs.pop('only', '').split(',')) if f]
-        exclude = [f for f in tuple(kwargs.pop('exclude', '').split(',')) if f]
-        match = yaml.safe_load(kwargs.pop('match', '[]'))
-        order_by = kwargs.pop('order_by', None)
-        sort = kwargs.pop('sort', None)
-        cache = kwargs.pop('cache', True) # don't remove even if unused
-        return {
-            'paginate': paginate,
-            'per_page': per_page,
-            'page': page,
-            'only': only,
-            'exclude': exclude,
-            'match': match,
-            'order_by': order_by,
-            'sort': sort,
-            'cache': cache
-        }
-
-    def _get_model_name(self):
-        return self.__class__.__name__.replace('Id', '').replace('List', '')
+                        raise FilterNotSupported(self.model_title, op)
+                    self.q = self.q.filter(getattr(column, attr)(v))
 
     def _get_excluded_fields(self):
         try:
@@ -464,8 +473,20 @@ class CRUD(Resource):
         except Exception as e:
             return ()
 
-def abort_400_if_not_belong(name, elem, group):
-    if not elem:
-        raise APIException(400, "{} needs to be in input data".format(name.title()))
-    if elem not in group:
-        raise APIException(400, "{0} {1} is invalid. List of valid {2}s: {3}".format(name.title(), elem, name, group))
+    def clear_cache(self, **params):
+        # Note: we have to use the Redis client to delete key by prefix,
+        # so we can't use the 'cache' Flask extension for this one.
+        config = current_app.config['CACHE_CONFIG']
+        redis_client = Redis(config['CACHE_REDIS_HOST'], config['CACHE_REDIS_PORT'])
+        endpoint = self.get_resource_url(**params)
+        key_prefix = config['CACHE_KEY_PREFIX'] + endpoint
+        keys = [key for key in redis_client.keys() if key.startswith(key_prefix)]
+        nkeys = len(keys)
+        for key in keys:
+            redis_client.delete(key)
+        if nkeys > 0:
+            log.debug("Cleared %s cache keys" % nkeys)
+            log.debug(keys)
+
+    def get_resource_url(self, **params):
+        return url_for('api.' + self.__class__.__name__.lower(), **params)

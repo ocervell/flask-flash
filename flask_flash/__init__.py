@@ -4,9 +4,83 @@ from flask_restful import Api
 from extensions import *
 from flask_script import Manager, Shell, Server, prompt_bool
 from flask_migrate import Migrate, MigrateCommand
+from flask_flash.client import BaseClient, CRUDEndpoint
 
 log = logging.getLogger(__name__)
 profile = os.environ.get('FLASK_API_PROFILE', 'default')
+
+class Flash(object):
+    def __init__(self, config, resources=[]):
+        self.app = Flask(__name__)
+        self.resources = resources
+        self.routes = []
+        self.create_api(config, resources)
+
+    def create_api(self, config, resources=[]):
+        # Init app config
+        cfg = config[profile]
+        cfg.init_app(self.app)
+        self.app.config.from_object(cfg)
+
+        # Create API blueprint
+        bp = Blueprint('api', __name__)
+        api = Api(bp)
+
+        # Add API resources to Flask-Restful API
+        for r in resources:
+            r_col = type(r.__name__ + '_col', r.__bases__, dict(r.__dict__))
+            r_col.collection = True
+            rpath = self.get_path(r)
+            rpath_col = self.get_path(r_col)
+            api.add_resource(r, rpath)
+            self.routes.append((r.__name__, rpath, rpath_col))
+            api.add_resource(r_col, rpath_col)
+
+        # Register extensions required by Flask-Flash
+        register_extensions(self.app, EXTENSIONS_API)
+
+        # Register API blueprint to Flask app
+        self.app.register_blueprint(bp, url_prefix=os.environ.get('FLASK_API_PREFIX', '/api'))
+
+        # Create server
+        host = os.environ.get('FLASK_API_HOST', "0.0.0.0")
+        port = os.environ.get('FLASK_API_PORT', 5001)
+        self.server = Server(host, port)
+
+        # Create API client
+        self.client = self.create_api_client(host + ':' + str(port))
+
+        # Create db migrater
+        migrate = Migrate(self.app, db)
+
+        # Create manager
+        self.manager = Manager(self.app)
+        self.shell = Shell(make_context=lambda: dict(app=self.app, db=db))
+        self.manager.add_command("runserver", self.server)
+        self.manager.add_command("shell", self.shell)
+        self.manager.add_command("db", MigrateCommand)
+
+    def get_path(self, resource):
+        try:
+            path_prefix = resource.path
+        except AttributeError:
+            path_prefix = '/' + resource.__name__.lower()
+        try:
+            collection = resource.collection
+        except:
+            collection = False
+        if collection:
+            return path_prefix.replace('_col', '') + 's'
+        else:
+            return path_prefix + '/<id>'
+
+    def create_api_client(self, url='localhost:5001', **kwargs):
+        """Returns an instance of `BaseClient` configured with the endpoints."""
+        c = BaseClient(url, **kwargs)
+        for r in self.routes:
+            c.add(CRUDEndpoint, r[1].replace('/<id>', ''), r[2])
+            print c.__dict__
+        return c
 
 def create_app(config, resources):
     """Create the Flask app.
@@ -16,7 +90,6 @@ def create_app(config, resources):
       * Load application data (if needed) locally (data files will be loaded in
         data/ folder).
       * Register the Flask extensions defined in `extensions.py`.
-      * Register the Flask blueprints defined in `blueprints.py`.
       * Inject variables needed by all our Jinja2 templates.
 
     Args:
@@ -61,7 +134,8 @@ def register_extensions(app, extensions):
     c = 0
     for e in extensions:
         if isinstance(e, tuple) and e[1] == 'cache': # Flask-Cache extension
-            e[0].init_app(app, config=cfg.CACHE_CONFIG)
+            log.info(app.config)
+            e[0].init_app(app, config=app.config['CACHE_CONFIG'])
             c += 1
         else:
             try:
@@ -77,6 +151,13 @@ class BaseConfig(object):
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SQLALCHEMY_MAX_INPUT = 998
     SQLALCHEMY_DATABASE_URI = 'sqlite:////tmp/test.db'
+    CACHE_CONFIG = {
+        'CACHE_TYPE': 'redis',
+        'CACHE_REDIS_HOST': 'localhost',
+        'CACHE_REDIS_PORT': '6379',
+        'CACHE_KEY_PREFIX': 'flask_',
+        'CACHE_DEFAULT_TIMEOUT': 10 # seconds,
+    }
 
     def get(value, default=None):
         try:
@@ -87,3 +168,8 @@ class BaseConfig(object):
     @staticmethod
     def init_app(app):
         pass
+
+
+test_config = {
+    'default': BaseConfig
+}

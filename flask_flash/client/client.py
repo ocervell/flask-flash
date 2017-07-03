@@ -61,7 +61,7 @@ class BaseClient(object):
 
     def __init__(self, host, auth=(), use_cache=True,
                  paginate=True, **kwargs):
-        self.agent = Agent(host)
+        self.agent = Agent(host, **kwargs)
         if auth:
             self.username, self.password = auth
         try:
@@ -75,13 +75,23 @@ class BaseClient(object):
         if self.LOGIN_DISABLED:
             log.warning(textwrap.dedent("""\
                 This client is running with `LOGIN_DISABLED` set to True,
-                meaning that you'll login with (fake_user, fake_user).
-                The API at {base_url} should be running in a config having LOGIN_DISABLED
-                enabled, meaning either in DevelopmentConfig / TestingConfig mode.
+                meaning that you'll login with any user / password.
+                This assumes your API is running with 'LOGIN_DISABLED' set to
+                True in the config (BaseConfig object).
+
+                The config for the Flask-Flash API at {base_url} should have
+                it's attribute 'LOGIN_DISABLED' set to True, otherwise this
+                option won't work.
                 """.format(base_url=self.agent.base_url)))
 
     def get_token():
         raise NotImplementedError()
+
+
+    def add(self, endpoint_class, single_route, multiple_route, name=None):
+        if name is None: name = multiple_route.split('/')[-1]
+        print "New endpoint: %s" % name
+        self.__dict__[name] = endpoint_class(self, single_route, multiple_route)
 
     #---------#
     # General #
@@ -244,7 +254,7 @@ class BaseClient(object):
                 auth = (self.username, self.password)
 
         # Request data with agent
-        r = self.agent.request(method, relative_url, auth=auth, json=json)
+        r = self.agent.request(method, relative_url, auth=auth, json=json, log_401=False)
 
         # Handle empty responses
         if r is None:

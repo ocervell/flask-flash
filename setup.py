@@ -1,7 +1,7 @@
 from setuptools import setup
 
 setup(name='Flask-Flash',
-      version='0.1',
+      version='0.2',
       description='Flask API framework (API + Client) to create simple APIs from database models.',
       author='Olivier Cervello',
       author_email='olivier.cervello@gmail.com',
@@ -15,6 +15,7 @@ setup(name='Flask-Flash',
         'redis',
         'Flask-Script',
         'Flask-Migrate',
+	'Flask-Caching',
         'Flask',
         'requests',
         'numpy'

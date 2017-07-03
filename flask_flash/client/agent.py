@@ -22,23 +22,13 @@ class Agent(object):
             a.b.c.com
         port (int, optional): The port to use. Default to 80.
     """
-    HTTP_STATUS_CODES = {
-        '200': 'OK',
-        '400': 'BAD_REQUEST',
-        '401': 'UNAUTHORIZED',
-        '403': 'FORBIDDEN',
-        '404': 'NOT FOUND',
-        '408': 'REQUEST TIMEOUT'
-    }
-
-    def __init__(self, url):
+    def __init__(self, url, **params):
         self.host, self.port = Agent.get_host_port(url)
-        self.base_url = 'http://{host}:{port}/api'.format(
-                            host=self.host,
-                            port=self.port)
-        log.debug("API Agent initialized at %s" % (self.base_url))
+        self.base_url = 'http://{}:{}/api'.format(self.host, self.port)
+        log.debug("Agent initialized at %s" % (self.base_url))
 
-    def request(self, method, url, auth=(), json={}, absolute=False):
+    def request(self, method, url, auth=(), json={}, absolute=False, log_401=True):
+        """Wrapper around `requests` lib methods."""
         success = 'FAILURE'
         r = None
         now = time.time()
@@ -47,10 +37,8 @@ class Agent(object):
             url = self.build_url(url)
         else:
             rel_url = self._construct_relative_url(url)
-        log.info("Hitting URL: %s" % url)
         if url:
             self.before_request(method, url)
-            # requests_method = getattr(s, method)
             requests_method = getattr(requests, method)
             try:
                 if method == 'get' or method == 'head':
@@ -58,7 +46,7 @@ class Agent(object):
                 else:
                     r = requests_method(url, auth=auth, json=json)
                 success = 'SUCCESS'
-                self.after_request(r, method)
+                self.after_request(r, method, log_401)
             except Exception as e:
                 if 'BadStatusLine' in str(e):
                     pass
@@ -76,8 +64,9 @@ class Agent(object):
     def before_request(self, method, url):
         log.debug("{method} | {url} | REQUEST".format(method=method.upper(), url=url))
 
-    def after_request(self, r, method):
+    def after_request(self, r, method, log_401=True):
         if r.status_code != 200:
+            if r.status_code == 401 and not log_401: return
             log.error("{method} | {r.url} | RESPONSE | HTTP Status: {r.status_code} ({r.reason})".format(r=r, method=method))
             return
         content_type = r.headers.get('Content-Type', '')
