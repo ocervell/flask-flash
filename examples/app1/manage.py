@@ -1,5 +1,8 @@
 #!/usr/bin/env python
-from config import manager
+from flask_flash import Flash
+from resources import User
+
+flash = Flash(resources=[User])
 
 if __name__ == '__main__':
-    manager.run()
+    flash.manager.run()

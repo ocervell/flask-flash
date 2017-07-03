@@ -46,15 +46,15 @@ class User(CRUD):
 `app/manage.py` - Basic initialization of our `Flash` app (config and routes).
 
 ```
+#!/usr/bin/env python
 from flask_flash import Flash
-from .resources import User
+from resources import User
 
-config = { 'default': BaseConfig }
-routes = [ User ]
-flash = Flash(config, routes)
+flash = Flash(resources=[User])
 
 if __name__ == '__main__':
     flash.manager.run()
+
 ```
 
 **Run your API**
@@ -87,6 +87,10 @@ Flask-Flash API Client (Python)
 -----------
 
 ### Basic usage
+The positive side of having a client as part of the API framework means that
+we are done with running db queries from our shell and can use a higher level
+Python client instead.
+
 ```
 from flask_flash.client import BaseClient, CRUDEndpoint  
 c = BaseClient('localhost:5001')
@@ -97,7 +101,20 @@ c.users.get(1) # get user 1
 c.users.update(1, username='Johnny') # update username for user 1
 ```
 
+Alternatively, for local-mode only, you can use the `Flask-Script` shell.
+This time the endpoints are automatically registered to the client and the client
+is automatically imported as `c`.
+
+`./manage.py runserver`
+
+```
+c.users.get()
+```
+
 ### Advanced client usage
+
+#### Instanciating a remote client
+
 
 #### Query API
 ```
