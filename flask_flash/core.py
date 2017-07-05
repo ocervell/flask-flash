@@ -245,7 +245,7 @@ class CRUD(Resource):
 
             # Loop through updates
             ids = []
-            for d in updates:
+            for d in data:
 
                 # Convert date fields
                 try:
