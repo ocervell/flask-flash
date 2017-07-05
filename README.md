@@ -30,15 +30,15 @@ class UserModel(db.Model):
 
 class UserSchema(ma.ModelSchema):
     class Meta:
-        model = User # link schema with model
-    username = db.Field(required=True)
-    password = db.Field(required=True)
+        model = UserModel # link schema with model
+    username = ma.Field(required=True)
+    password = ma.Field(required=True)
 ```
 
 `app/resources.py` - *Definition of API endpoints.*
 ```
 from flask_flash import CRUD
-from models import User, UserSchema
+from models import UserModel, UserSchema
 
 class User(CRUD):
     model = UserModel
