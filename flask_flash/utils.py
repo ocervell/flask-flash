@@ -2,6 +2,7 @@ from datetime import datetime
 import logging
 from flask import request
 import urllib
+from extensions import cache
 
 log = logging.getLogger(__name__)
 
@@ -74,27 +75,3 @@ def transform_html(data, headers=None):
     resp = current_app.make_response(data_html)
     resp.headers.extend(headers or {})
     return resp
-
-def cache_disabled_url(*args, **kwargs):
-    """Method to disable the cache for a request based on URL parameter 'cache'
-    set to False.
-
-    Returns:
-        bool: True if the cache is disabled, False otherwise.
-    """
-    log.debug("%s %s" % (request.method, request.full_path))
-    use_cache = str2bool(request.args.to_dict().get('cache', 'True'))
-    if not use_cache:
-        key = cache_key()
-        log.debug("Cache disabled for %s" % key)
-        log.debug("Deleting cache key %s" % key)
-        cache.delete(key)
-        return True
-    return False
-
-def cache_key():
-    args = request.args
-    key = request.path + '?' + urllib.urlencode([
-        (k, v) for k in sorted(args) for v in sorted(args.getlist(k)) if k != 'cache'
-    ])
-    return key

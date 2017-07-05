@@ -28,6 +28,14 @@ def jsonlist(value):
     except:
         return []
 
+def str2bool(v):
+    if v.lower() in ('yes', 'true', 't', 'y', '1'):
+        return True
+    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+        return False
+    else:
+        raise Exception('Boolean value expected.')
+
 #----------------#
 # API Exceptions #
 #----------------#
@@ -143,16 +151,11 @@ class CRUD(Resource):
 
     # Overridable defaults
     methods = ['GET', 'POST', 'PUT', 'DELETE']
-    cache_timeout = 10 # seconds
-    cache_key_prefix = cache_key
-    cache_disabled = cache_disabled_url
+    cached = True
 
     def __init__(self):
         # Decorate get function to enable caching
-        self.get = cache.cached(
-            timeout=self.cache_timeout,
-            key_prefix=self.cache_key_prefix,
-            unless=self.cache_disabled)(self.get)
+        if self.cached: self.get = cache.cached(query_string=True)(self.get)
 
         # Set primary key name directly from db model
         self.pk = inspect(self.model).primary_key[0].name
@@ -165,32 +168,30 @@ class CRUD(Resource):
             self.parser.add_argument(c, type=liststr, default=None, location='args')
         self.parser.add_argument('page',     type=int, default=1, location='args')
         self.parser.add_argument('per_page', type=int, default=10, location='args')
-        self.parser.add_argument('paginate', type=bool, default=True, location='args')
+        self.parser.add_argument('paginate', type=str2bool, default=True, location='args')
         self.parser.add_argument('order_by', type=str, default=self.pk, choices=self.columns, location='args')
         self.parser.add_argument('sort',     type=str, default='desc', choices=['asc', 'desc'], location='args')
         self.parser.add_argument('only',     type=liststr, default=(), location='args')
         self.parser.add_argument('exclude',  type=liststr, default=(), location='args')
         self.parser.add_argument('match',    type=jsonlist, default=[], location='args')
         self.parser.add_argument('sort',     type=str, default=None, location='args')
-        self.parser.add_argument('cache',    type=bool, default=True, location='args')
+        self.parser.add_argument('cache',    type=str2bool, default=True, location='args')
 
     def parse_args(self):
         args = self.parser.parse_args()
+        log.info(args)
         model_filters, unique_args = {}, {}
         for k, v in args.items():
             if k in self.columns:
-                if v is None:
-                    continue
-                model_filters[k] = v
+                if v is not None:
+                    model_filters[k] = v
             else:
                 unique_args[k] = v
         return model_filters, unique_args
 
     def head(self):
         c, g = self.parse_args()
-        g.pop('order_by', None)
-        g.pop('sort', None)
-        self.filter_query(c, g)
+        self.filter_query(g, c)
         try:
             resp = Response(mimetype='application/json')
             resp.headers = {
@@ -220,8 +221,7 @@ class CRUD(Resource):
                     elems = self.q.paginate(g['page'], g['per_page'], False).items
                 else:
                     elems = self.q.all()
-                    if not elems or elems is None:
-                        return []
+                    if not elems or elems is None: return []
             end = time.time()
             log.debug("GET | {url} | {time:.4f}s".format(url=request.url, time=(end - start)))
             return self.schema(many=many,
@@ -239,38 +239,38 @@ class CRUD(Resource):
         """TODO: Convert data loading to Marshmallow schema load."""
         try:
             # Get update list
-            updates = request.get_json()
-            if not isinstance(updates, list):
-                updates = [updates]
+            data = request.get_json()
+            if not isinstance(data, list):
+                data = [data]
 
             # Loop through updates
             ids = []
-            for update_dict in updates:
+            for d in updates:
 
                 # Convert date fields
                 try:
-                    update_dict = self.schema().on_load(update_dict)
+                    d = self.schema().on_load(d)
                 except AttributeError:
                     pass
 
                 # Get object id
-                oid = id or update_dict.get(self.pk)
+                oid = id or d.get(self.pk)
                 ids.append(oid)
                 if oid is None:
                     raise MissingParameter(self.model_title, self.pk)
-                update_dict[self.pk] = oid
+                d[self.pk] = oid
 
                 # Done field
-                done = update_dict.get('done', False)
+                done = d.get('done', False)
                 if done:
-                    update_dict['end_date'] = datetime.utcnow()
+                    d['end_date'] = datetime.utcnow()
                 dbo = self.q.get(oid)
                 if not dbo:
                     raise ResourceNotFound(self.model_title, oid)
                 log.info("{model} {id} | PUT {params}".format(
                             model=self.model_title, id=oid,
-                            params=reprd(update_dict)))
-                for k, v in update_dict.items():
+                            params=reprd(d)))
+                for k, v in d.items():
                     if k == self.pk:
                         continue
                     if not hasattr(self.model, k) or k in self.excluded_fields:
@@ -325,7 +325,7 @@ class CRUD(Resource):
             db.session.commit()
 
             # Clear cache
-            self.clear_cache()
+            if self.cached: self.clear_cache()
 
             # Return created objects in JSON format
             if len(defs) == 1:
@@ -341,22 +341,34 @@ class CRUD(Resource):
             log.exception(e)
             abort(500, message=str(e))
 
-    def delete(self, id):
+    def delete(self, id=None):
         try:
-            dbo = self.q.get(id)
-            if not dbo:
+            if id is not None:
+                dbo = self.q.get(id)
+                if not dbo:
+                    return jsonify({
+                        self.pk: id,
+                        'deleted': False,
+                        'message': ResourceNotFound(self.model_title, id).message
+                    })
+                log.info("{model} | DELETE {id}".format(model=self.model_title, id=id))
+                db.session.delete(dbo)
+                db.session.commit()
                 return jsonify({
                     self.pk: id,
-                    'deleted': False,
-                    'message': ResourceNotFound(self.model_title, id).message
+                    'deleted': True
                 })
-            log.info("{model} | DELETE {id}".format(model=self.model_title, id=id))
-            db.session.delete(dbo)
-            db.session.commit()
-            return jsonify({
-                self.pk: id,
-                'deleted': True
-            })
+            else:
+                c, g = self.parse_args()
+                g['order_by'], g['sort'] = None, None # .delete() cannot be called otherwise
+                self.filter_query(g, c)
+                count = self.q.count()
+                self.q.delete()
+                db.session.commit()
+                return jsonify({
+                    'count': count,
+                    'deleted': True
+                })
 
         except APIException as e:
             abort(e.code, message=str(e))

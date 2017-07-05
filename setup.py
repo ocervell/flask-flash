@@ -1,7 +1,7 @@
 from setuptools import setup
 
 setup(name='Flask-Flash',
-      version='0.2',
+      version='1.0',
       description='Flask API framework (API + Client) to create simple APIs from database models.',
       author='Olivier Cervello',
       author_email='olivier.cervello@gmail.com',
@@ -10,15 +10,18 @@ setup(name='Flask-Flash',
         'flask-restful',
         'SQLAlchemy',
         'Flask-SQLAlchemy',
-        'marshmallow',
+        'Flask-Marshmallow',
         'marshmallow-sqlalchemy',
         'redis',
         'Flask-Script',
         'Flask-Migrate',
-	'Flask-Caching',
+	    'Flask-Caching',
         'Flask',
+        'flask-httpauth',
         'requests',
-        'numpy'
+        'numpy',
+        'pyyaml',
+        'faker'
       ],
       packages=[
         'flask_flash',

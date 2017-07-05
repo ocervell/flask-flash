@@ -158,6 +158,18 @@ class BaseClient(object):
         return data
 
     @logit
+    def delete_with_params(self, relative_url, **kwargs):
+        data = {'deleted': False, 'count': 0}
+        urls = self._construct_query_urls(relative_url, **kwargs)
+        i = 0
+        for u in urls:
+            i += 1
+            part_data = self.delete(u)
+            data['deleted'] |= part_data['deleted']
+            data['count'] += part_data['count']
+        return data
+
+    @logit
     def post(self, relative_url, json={}, use_token=True, auth=()):
         """Sends a POST request to the relative URL passed as argument.
 
@@ -180,7 +192,7 @@ class BaseClient(object):
                              auth=auth)
 
     @logit
-    def put(self, relative_url, json={}, use_token=True, auth=()):
+    def put(self, relative_url, json={}, use_token=True, auth=(), **filters):
         """Send PUT request to the relative URL passed as argument.
 
         Args:
@@ -197,10 +209,10 @@ class BaseClient(object):
             > c.update('/action/1', json=json_data)
         """
         return self._request('put', relative_url, json=json, use_token=True,
-                             auth=auth)
+                             auth=auth, **filters)
 
     @logit
-    def delete(self, relative_url, json={}, use_token=True, auth=()):
+    def delete(self, relative_url, json={}, use_token=True, auth=(), **filters):
         """Send DELETE request to the relative URL passed as argument.
 
         Args:
@@ -216,7 +228,7 @@ class BaseClient(object):
             > c.delete('/action/1')
         """
         return self._request('delete', relative_url, json=json, use_token=True,
-                             auth=auth)
+                             auth=auth, **filters)
 
     @logit
     def head(self, relative_url, use_token=True, auth=(), **filters):
@@ -588,15 +600,13 @@ class CRUDEndpoint(Endpoint):
         else:
             return self.get(ids)['_links']['self']
 
-    def delete(self, ids=None, **filters):
+    def delete(self, ids=None, match=None, **filters):
         if ids is None and filters:
             ids = [a['id'] for a in self.get(**filters)]
         if isinstance(ids, list):
-            deletes = []
-            for id in ids:
-                r = self.client.delete('{0}/{1}'.format(self.single, id))
-                deletes.append(r)
-            return deletes
+            if match is not None:
+                filters['match'] = [match]
+            return self.client.delete_with_params('{0}'.format(self.multiple), **filters)
         elif isinstance(ids, int):
             return self.client.delete('{0}/{1}'.format(self.single, ids))
         else:
