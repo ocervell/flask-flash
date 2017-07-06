@@ -488,7 +488,7 @@ class CRUDEndpoint(Endpoint):
 
         # Convert id if necessary
         id = id or filters.get('id')
-        if isinstance(id, int):
+        if isinstance(id, int) or isinstance(id, basestring):
             return self.client.get('{0}/{1}'.format(self.single, id))
         filters['id'] = id
 
@@ -552,7 +552,7 @@ class CRUDEndpoint(Endpoint):
         if isinstance(ids, list):
             json = self.client._build_put_data(ids, **params)
             return self.client.put('{0}'.format(self.multiple), json=json)
-        elif isinstance(ids, int):
+        elif isinstance(ids, int) or isinstance(ids, basestring):
             return self.client.put('{0}/{1}'.format(self.single, ids), json=params)
         else:
             raise TypeError("`update` first argument `ids` must be a list or an int")
@@ -607,7 +607,7 @@ class CRUDEndpoint(Endpoint):
             if match is not None:
                 filters['match'] = [match]
             return self.client.delete_with_params('{0}'.format(self.multiple), **filters)
-        elif isinstance(ids, int):
+        elif isinstance(ids, int) or isinstance(ids, basestring):
             return self.client.delete('{0}/{1}'.format(self.single, ids))
         else:
             raise TypeError("`delete` first argument `ids` must be a list or an int")

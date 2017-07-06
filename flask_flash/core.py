@@ -288,7 +288,7 @@ class CRUD(Resource):
             db.session.commit()
 
             # Clear cache
-            self.clear_cache(id=id)
+            if self.cached: self.clear_cache(id=id)
 
             # Get the updated objects from the db and return them as JSON
             id_attr = getattr(self.model, self.pk)
