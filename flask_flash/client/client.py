@@ -14,10 +14,15 @@ def logit(func):
     return wrapper
 
 class APIRequestException(Exception):
-    def __init__(self, code, reason, description=None):
+    def __init__(self, url, code, reason, description=None):
+        self._url = url
         self._code = code
         self._reason = reason
         self._description = description
+
+    @property
+    def url(self):
+        return self._url
 
     @property
     def code(self):
@@ -33,9 +38,9 @@ class APIRequestException(Exception):
 
     def __str__(self):
         if self.description is not None:
-            return "{} ({}) | {}".format(self.code, self.reason, self.description)
+            return "{} | {} ({}) | {}".format(self.url, self.code, self.reason, self.description)
         else:
-            return "{} ({})".format(self.code, self.reason)
+            return "{} | {} ({})".format(self.url, self.code, self.reason)
 
 class BaseClient(object):
     """Low level client that implements basic HTTP functions.
@@ -57,6 +62,7 @@ class BaseClient(object):
 
     # Max request size (in Bytes) above which the backend will throw
     # Customizable with constructor's **kwargs argument: 'MAX_REQUEST_SIZE'
+    # Defaults to NGINX default max request size.
     DEFAULT_MAX_REQUEST_SIZE = 2900
 
     def __init__(self, host, auth=(), use_cache=True,
@@ -87,8 +93,8 @@ class BaseClient(object):
     def get_token():
         raise NotImplementedError()
 
-
-    def add(self, endpoint_class, single_route, multiple_route, name=None):
+    def register(self, endpoint_class, single_route, multiple_route, name=None):
+        """Register an endpoint with this client."""
         if name is None: name = multiple_route.split('/')[-1]
         print "New endpoint: %s" % name
         self.__dict__[name] = endpoint_class(self, single_route, multiple_route)
@@ -255,7 +261,7 @@ class BaseClient(object):
         """
         # Check method
         if method not in self.SUPPORTED_HTTP_METHODS:
-            raise APIRequestException(400, "Method %s is not supported." % method)
+            raise APIRequestException(relative_url, 400, "Method %s is not supported." % method)
 
         # Authentify with / without token
         if use_token:
@@ -270,7 +276,7 @@ class BaseClient(object):
 
         # Handle empty responses
         if r is None:
-            raise APIRequestException(500, "Internal server error", "No response returned from %s" % relative_url)
+            raise APIRequestException(relative_url, 500, "Internal server error", "No response returned from %s" % relative_url)
 
         # If token expired, refresh token and try again
         if use_token and r.status_code == 401:
@@ -281,12 +287,11 @@ class BaseClient(object):
         # Raise exception if response has non-success HTTP code
         if r.status_code != 200:
             description = self.process_error_response(r)
-            raise APIRequestException(r.status_code, r.reason, description)
+            raise APIRequestException(relative_url, r.status_code, r.reason, description)
 
         if method == 'head':
             return yaml.safe_load(r.headers['data'])
 
-        log.info("RESPONSE: %s" % r.json())
         return r.json()
 
     def process_error_response(self, r):
@@ -461,6 +466,11 @@ class CRUDEndpoint(Endpoint):
     def create_multiple(self, defs):
         return self.client.post('{0}'.format(self.multiple), json=defs)
 
+    def get_or_create(self, *args, **kwargs):
+        obj = self.get(*args, **kwargs)
+        if not obj or obj is None:
+            return self.create(*args, **kwargs)
+
     def get(self, id=None, paginate=None, page=None, per_page=None,
             order_by=None, sort=None, match=None, use_cache=None, **filters):
         """Sends GET request with either id or **filters url-encoded.
@@ -601,6 +611,9 @@ class CRUDEndpoint(Endpoint):
             return self.get(ids)['_links']['self']
 
     def delete(self, ids=None, match=None, **filters):
+        """Delete objects identified either by `ids` or by a list of filters.
+        TODO: Review this for objects where 'id' is not a primary key.
+        """
         if ids is None and filters:
             ids = [a['id'] for a in self.get(**filters)]
         if isinstance(ids, list):

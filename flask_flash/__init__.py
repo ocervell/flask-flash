@@ -1,27 +1,53 @@
 import os, logging
 from flask import Blueprint, Flask, session
 from flask_restful import Api
-from extensions import *
 from flask_script import Manager, Shell, Server, prompt_bool
 from flask_migrate import Migrate, MigrateCommand
-from flask_flash.client import BaseClient, CRUDEndpoint
+from client import *
+from core import *
+from extensions import *
+from utils import *
+import inspect
 
 log = logging.getLogger(__name__)
-profile = os.environ.get('FLASK_API_PROFILE', 'default')
+DEFAULT_PROFILE = os.environ.get('FLASK_API_PROFILE', 'default')
 
 class Flash(object):
-    def __init__(self, resources, config=None, **kwargs):
-        if config is None: config = { 'default': BaseConfig }
-        self.app = Flask(__name__)
+    """Create a Flask-Flash API.
+
+    Attributes:
+        api: The Flask-Restful api object of class `flask_restful.Api`.
+        app: The Flask app object of class `flask.Flask`.
+        config: The Flask app config.
+        db: The Flask-Flash database object.
+        routes: The Flask-Flash routes registered with the api.
+
+    Example:
+        >>> from flask_flash import Flash
+        >>> from models import Auth, User, Other
+        >>> flash = Flash([Auth, User, Other])
+    """
+    def __init__(self, resources, **kwargs):
+        self.config = kwargs.get('config', {'default': BaseConfig})
+        self.profile = kwargs.get('profile', DEFAULT_PROFILE)
+        self.app = kwargs.get('app', Flask(__name__))
         self.db = db
         self.resources = resources
         self.routes = []
-        self.create_api(config, resources, **kwargs)
+        self.create_api(resources, **kwargs)
 
-    def create_api(self, config, resources, **kwargs):
-        """Create the main Flash API."""
+    def create_api(self, resources, **kwargs):
+        """Create the main Flash API.
+
+        Kwargs:
+            app: An existing Flask application (default: Flask(__name__))
+            extensions: A list of extensions to register with the Api
+            url_prefix: The API url prefix (default: /api)
+            host: The API host (default: localhost)
+            port: The API port (default: 5001)
+        """
         # Init app config
-        cfg = config[profile]
+        cfg = self.config[self.profile]
         cfg.init_app(self.app)
         self.app.config.from_object(cfg)
 
@@ -33,7 +59,7 @@ class Flash(object):
         self.register_resources()
 
         # Register extensions required by Flask-Flash
-        self.register_extensions()
+        self.register_extensions(extensions=kwargs.get('extensions', []))
 
         # Register Flask-Restful API blueprint to Flask app
         self.app.register_blueprint(bp, url_prefix=kwargs.get('url_prefix', '/api'))
@@ -57,58 +83,84 @@ class Flash(object):
         self.manager.add_command("db", MigrateCommand)
 
     def get_path(self, resource):
-        """Infer partial URL of resource based on class name / class param 'path'"""
-        try:
-            path_prefix = resource.path
-        except AttributeError:
-            path_prefix = '/' + resource.__name__.lower()
-        try:
-            collection = resource.collection
-        except:
-            collection = False
+        """Infer partial URL of resource based on resource.__class__.__name__
+        and / or from params 'resource.path', 'resource.path_prefix',
+        'resource.path_collection'
+        """
+        prefix = getattr(resource, 'path_prefix', '')
+        suffix = getattr(resource, 'path', self.get_default_suffix(resource))
+        prefix = '/' + prefix if not prefix.startswith('/') else prefix
+        suffix = suffix[1:] if suffix.startswith('/') else suffix
+        collection = getattr(resource, 'collection', False)
+        path = os.path.join(prefix, suffix)
         if collection:
-            return path_prefix.replace('_col', '') + 's'
+            pathc = getattr(resource, 'path_collection', path.replace('_collection', '') + 's')
+            path = pathc
         else:
-            return path_prefix + '/<id>'
+            paths = os.path.join(path, '<id>')
+            path = paths
+        log.info("%s --> %s" % (resource.__name__, path))
+        return path
+
+    def get_default_suffix(self, resource):
+        matches = re.findall('[A-Z][^A-Z]*', resource.__name__)
+        if matches:
+            return os.path.join('/', *matches).lower()
+        return os.path.join('/', resource.__name__).lower()
 
     def create_api_client(self, url='localhost:5001', **kwargs):
         """Create an API client from the API routes definitions."""
         c = BaseClient(url, **kwargs)
         for r in self.routes:
-            c.add(CRUDEndpoint, r[1].replace('/<id>', ''), r[2])
+            c.register(CRUDEndpoint, r[1].replace('/<id>', ''), r[2])
         return c
 
     def register_resources(self):
         """Register all API resources with our Flask-Restful API."""
         for r in self.resources:
-            # Duplicate 'single' resource to make identical one for 'collection'
-            r_col = type(r.__name__ + '_col', r.__bases__, dict(r.__dict__))
-            r_col.collection = True
+            parent_classes = [i.__name__ for i in inspect.getmro(r)]
+            if 'CRUD' in parent_classes:
+                # Duplicate 'single' resource to make identical one for 'collection'
+                r_col = type(r.__name__ + '_collection', r.__bases__, dict(r.__dict__))
+                r_col.collection = True
 
-            # Get resource paths (from class name or through class attribute 'path')
-            rpath = self.get_path(r)
-            rpath_col = self.get_path(r_col)
+                # Get resource paths (from class name or through class attribute 'path')
+                rpath = self.get_path(r)
+                rpath_col = self.get_path(r_col)
 
-            # Add resources to API
-            self.api.add_resource(r, rpath)
-            self.api.add_resource(r_col, rpath_col)
-            self.routes.append((r.__name__, rpath, rpath_col))
+                # Add resources to API
+                self.api.add_resource(r, rpath)
+                self.api.add_resource(r_col, rpath_col)
+                self.routes.append((r.__name__, rpath, rpath_col))
+            else:
+                rpath = getattr(r, 'path', None)
+                if rpath is not None:
+                    if isinstance(r.path, list):
+                        self.api.add_resource(r, *rpath)
+                    else:
+                        self.api.add_resource(r, rpath)
+                else:
+                    rpath = os.path.join('/', *re.findall('[A-Z][^A-Z]*', r.__name__)).lower()
+                    self.api.add_resource(r, rpath)
 
-    def register_extensions(self):
+    def register_extensions(self, extensions=[]):
         """Register all Flask extensions defined in `extensions.py` with our Flask
         app.
         """
         c = 0
+        EXTENSIONS_API.extend(extensions)
         for e in EXTENSIONS_API:
             if isinstance(e, tuple) and e[1] == 'cache': # Flask-Cache extension
-                log.info(self.app.config)
-                e[0].init_app(self.app, config=self.app.config['CACHE_CONFIG'])
+                try:
+                    e[0].init_app(self.app, config=self.app.config['CACHE_CONFIG'])
+                except AssertionError:
+                    continue
                 c += 1
             else:
                 try:
                     e.init_app(self.app)
                     c += 1
-                except (AttributeError, ValueError):
+                except (AttributeError, ValueError, AssertionError):
                     continue
         log.debug("Registered %s extensions" % c)
 

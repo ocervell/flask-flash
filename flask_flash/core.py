@@ -1,6 +1,6 @@
 import logging, pprint, json, yaml, time
 from flask import g, request, Response, url_for, jsonify, current_app
-from flask_restful import abort, Resource
+from flask_restful import abort, Resource as FlaskRestfulResource
 from flask_restful.reqparse import RequestParser
 from redis import Redis
 from sqlalchemy import desc, asc
@@ -8,6 +8,8 @@ from extensions import db, auth, cache
 from utils import *
 from datetime import datetime
 from sqlalchemy.inspection import inspect
+import re
+from os.path import join
 
 log = logging.getLogger(__name__)
 log_access = logging.getLogger(__name__ + '_access')
@@ -117,28 +119,66 @@ class InvalidNumberOfParameters(APIException):
 #-----------#
 # Resources #
 #-----------#
-class Protected(Resource):
+class Protected(FlaskRestfulResource):
     """A Flask Restful resource protected by login."""
     decorators = [auth.login_required]
 
+class Resource(FlaskRestfulResource):
+    """A Flask-Restful resource implementing necessary functions."""
+
+    """list: methods
+    The HTTP methods enabled for this resource.
+    """
+    methods = ['GET', 'POST', 'PUT', 'DELETE']
+
+    """bool: cached
+    Add a cache to the resource on `GET`. Clears the cache on any other methods.
+    """
+    cached = True
+
+    """dict: permissions
+    A dict of permissions indexed by the HTTP method name.
+    """
+    permissions = {}
+
 class CRUD(Resource):
     """A Flask Restful resource implementing CRUD.
-    Create an API resource to GET / POST / PUT / DELETE / HEAD based only on a
+    API resource exposing GET / POST / PUT / DELETE / HEAD based only on a
     db model and a schema.
 
-    Note:
-        API Resources derived from this class need to set two class attributes:
-        `model (db.Model)` and `schema (ma.modelSchema)`.
+    CRUD resources will be split by Flask-Flash into a single resource and a
+    collection resource.
 
-    Example:
-        A CRUD resource using this model can be defined like:
+    >>> from models import *
+    >>> from flask_flash import Resource, Protected, CRUD
+    >>>
+    >>> class MyResAction(CRUD):
+    >>>    model = ActionModel
+    >>>    schema = ActionSchema
+    >>>
+    >>> class Batch(CRUD):
+    >>>     url = ('/my/prefix', '/batch', '/batches')
+    >>>     url_prefix = '/my/prefix'
+    >>>     model = BatchModel
+    >>>     schema = BatchSchema
 
-        > from ccc_db.models import MyModel, MyModelSchema
-        > from app.api.core import CRUD
-        >
-        > class MyAPIEndpoint(CRUD)
-        >    model = MyModel
-        >    schema = MyModelSchema
+    The resource map for above definitions will be as follow
+        ------------------------------------------------
+        Resource name          | URL
+        ------------------------------------------------
+        MyResAction            | /my/prefix/action/<id>
+        MyResAction_collection | /my/prefix/actions
+        Batch                  | /my/prefix/batch/<id>
+        Batch_collection       | /my/prefix/batches
+
+    where '<id>' is the primary key for the db model.
+
+    Notes:
+        - If `path_prefix` is not set, no prefix will be used.
+        - If `path` is not set, the resources will be automatically named using
+            the class name (see table below).
+        - If `path_collection` is not set, the collection will be named after
+            the resource with an 's' added at the end of the name.
     """
     SUPPORTED_OPERATORS = {
         '==': 'eq',
@@ -149,19 +189,72 @@ class CRUD(Resource):
         '!=': 'ne'
     }
 
-    # Overridable defaults
-    methods = ['GET', 'POST', 'PUT', 'DELETE']
-    cached = True
+    """str: pk, optional
+    The primary key to use for the model. Defaults to first primary key found
+    when omitted.
+    """
+    pk = ''
+
+    """str: url, optional
+    The url for the resource. Auto-generate path if omitted.
+    """
+    url = ''
+
+    """str: url_prefix, optional
+    The url_prefix for the resource. Default: '/'
+    """
+    url_prefix = '/'
+
+    """bool: collection, fixed
+    Indicates if this resource is a collection.
+    Set automatically by Flask-Flash while creating API resources for resource
+    de-duplication.
+    """
+    collection = False
+
+    def get_resource_url(self):
+        if not self.url: # `url` is omitted
+            default_url = self.get_default_url()
+            if self.collection:
+                # Add 's' to end of url
+                url_fragments = [self.url_prefix, default_url, 's']
+            else:
+                # Add '/<id>' to end of url
+                url_fragments = [self.url_prefix, default_url, '<id>']
+
+        elif isinstance(self.url, basestring): # `url` passed directly
+            self.url = self.url[1:] if self.url.startswith('/') else self.url
+            url_fragments = [self.url_prefix, self.url, '<id>']
+
+        elif len(self.url) > 2:  # ('url_single', 'url_multiple')
+            if self.collection:
+                url_fragments = [self.url_prefix, self.url[0]]
+            else:
+                url_fragments = [self.url_prefix, self.url[1], '<id>']
+        else:
+            raise AttributeError("%s has to be `basestring` or `tuple` of at most length 2." % (self.url))
+        url = os.path.join(*url_fragments)
+        log.info("%s --> %s" % (self.__name__, path))
+
+    def get_default_url(self):
+        matches = re.findall('[A-Z][^A-Z]*', cls.__name__)
+        if matches:
+            return os.path.join('/', *matches).lower()
+        return os.path.join('/', cls.__name__).lower()
 
     def __init__(self):
+        # Get url
+        self.url = self.get_resource_url()
+
         # Decorate get function to enable caching
         if self.cached: self.get = cache.cached(query_string=True)(self.get)
 
         # Set primary key name directly from db model
-        self.pk = inspect(self.model).primary_key[0].name
+        self.pk = self.pk or inspect(self.model).primary_key[0].name
         self.model_title = self.model.__name__.title()
         self.q = self.model.query
-        self.columns = [column.key for column in inspect(self.model).attrs]
+        self.columns = [c.key for c in inspect(self.model).columns]
+        self.relationships = [c.key for c in inspect(self.model).relationships]
         self.excluded_fields = self._get_excluded_fields()
         self.parser = RequestParser()
         for c in self.columns:
@@ -174,12 +267,17 @@ class CRUD(Resource):
         self.parser.add_argument('only',     type=liststr, default=(), location='args')
         self.parser.add_argument('exclude',  type=liststr, default=(), location='args')
         self.parser.add_argument('match',    type=jsonlist, default=[], location='args')
-        self.parser.add_argument('sort',     type=str, default=None, location='args')
+        # self.parser.add_argument('sort',     type=str, default=None, location='args')
         self.parser.add_argument('cache',    type=str2bool, default=True, location='args')
+
+    def get_relationship_model(self, name):
+        for rname in inspect(self.model).relationships:
+            if rname == name:
+                return r.mapper.class_
+        return None
 
     def parse_args(self):
         args = self.parser.parse_args()
-        log.info(args)
         model_filters, unique_args = {}, {}
         for k, v in args.items():
             if k in self.columns:
@@ -187,6 +285,8 @@ class CRUD(Resource):
                     model_filters[k] = v
             else:
                 unique_args[k] = v
+        log.info("Model args: %s" % model_filters)
+        log.info("Unique args: %s" % unique_args)
         return model_filters, unique_args
 
     def head(self):
@@ -232,6 +332,7 @@ class CRUD(Resource):
             abort(e.code, message=str(e))
 
         except Exception as e:
+            db.session.rollback()
             log.exception(e)
             abort(500, message='%s - %s' % (type(e).__name__, str(e)))
 
@@ -270,9 +371,21 @@ class CRUD(Resource):
                 log.info("{model} {id} | PUT {params}".format(
                             model=self.model_title, id=oid,
                             params=reprd(d)))
+
+                # Update object
                 for k, v in d.items():
+                    log.info(k)
                     if k == self.pk:
                         continue
+                    # TODO: Update relationship code
+                    # if k in self.relationships:
+                    #     log.info("Relation name is '%s'" % k)
+                    #     relation = getattr(dbo, k)
+                    #     if relation.__class__.__name__ == 'AppenderBaseQuery':
+                    #         if not isinstance(v, list): v = [v]
+                    #         for val in v:
+                    #             related_obj = get_relationship_model(k).get(val)
+                    #             relation.append(related_obj)
                     if not hasattr(self.model, k) or k in self.excluded_fields:
                         raise Forbidden(self.model_title, k)
                     if isinstance(v, list) or isinstance(v, dict): # JSON, convert to string
@@ -301,6 +414,7 @@ class CRUD(Resource):
             abort(e.code, message=str(e))
 
         except Exception as e:
+            db.session.rollback()
             log.exception(e)
             abort(500, message='%s - %s' % (type(e).__name__, str(e)))
 
@@ -338,6 +452,7 @@ class CRUD(Resource):
             abort(e.code, message=str(e))
 
         except Exception as e:
+            db.session.rollback()
             log.exception(e)
             abort(500, message=str(e))
 
@@ -374,6 +489,7 @@ class CRUD(Resource):
             abort(e.code, message=str(e))
 
         except Exception as e:
+            db.session.rollback()
             log.exception(e)
             abort(500, message='%s - %s' % (type(e).__name__, str(e)))
 

@@ -47,6 +47,13 @@ def reprd(d):
     except UnicodeEncodeError:
         return data
 
+def abort_400_if_not_belong(name, elem, group):
+    """Raise APIException (404) if `elem` does not belong to `group`."""
+    if not elem:
+        raise APIException(400, "{} needs to be in input data".format(name.title()))
+    if elem not in group:
+        raise APIException(400, "{0} {1} is invalid. List of valid {2}s: {3}".format(name.title(), elem, name, group))
+
 def convert(data):
     """Convert all unicode strings to strings in any iterable, mapping or
     basestring."""
