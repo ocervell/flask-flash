@@ -1,13 +1,14 @@
-import os, logging
+from resources import *
+from extensions import *
+from exceptions import *
+from client import *
+from utils import *
 from flask import Blueprint, Flask, session
 from flask_restful import Api
 from flask_script import Manager, Shell, Server, prompt_bool
 from flask_migrate import Migrate, MigrateCommand
-from client import *
-from core import *
-from extensions import *
-from utils import *
 import inspect
+import os, logging
 
 log = logging.getLogger(__name__)
 DEFAULT_PROFILE = os.environ.get('FLASK_API_PROFILE', 'default')
@@ -58,10 +59,10 @@ class Flash(object):
         # Add API resources to API
         self.register_resources()
 
-        # Register extensions required by Flask-Flash
+        # Register extensions required by Flask-Flash to our Flask app
         self.register_extensions(extensions=kwargs.get('extensions', []))
 
-        # Register Flask-Restful API blueprint to Flask app
+        # Register Flask-Restful API blueprint to our Flask app
         self.app.register_blueprint(bp, url_prefix=kwargs.get('url_prefix', '/api'))
 
         # Create Flask-Script Server
@@ -70,7 +71,7 @@ class Flash(object):
         self.server = Server(host, port)
 
         # Create Flask-Flash API client
-        self.client = self.create_api_client(host + ':' + str(port))
+        # self.client = self.create_api_client(host + ':' + str(port))
 
         # Create Flask-Migrate migrator
         migrate = Migrate(self.app, db)
@@ -82,66 +83,35 @@ class Flash(object):
         self.manager.add_command("shell", self.shell)
         self.manager.add_command("db", MigrateCommand)
 
-    def get_path(self, resource):
-        """Infer partial URL of resource based on resource.__class__.__name__
-        and / or from params 'resource.path', 'resource.path_prefix',
-        'resource.path_collection'
-        """
-        prefix = getattr(resource, 'path_prefix', '')
-        suffix = getattr(resource, 'path', self.get_default_suffix(resource))
-        prefix = '/' + prefix if not prefix.startswith('/') else prefix
-        suffix = suffix[1:] if suffix.startswith('/') else suffix
-        collection = getattr(resource, 'collection', False)
-        path = os.path.join(prefix, suffix)
-        if collection:
-            pathc = getattr(resource, 'path_collection', path.replace('_collection', '') + 's')
-            path = pathc
-        else:
-            paths = os.path.join(path, '<id>')
-            path = paths
-        log.info("%s --> %s" % (resource.__name__, path))
-        return path
-
-    def get_default_suffix(self, resource):
-        matches = re.findall('[A-Z][^A-Z]*', resource.__name__)
-        if matches:
-            return os.path.join('/', *matches).lower()
-        return os.path.join('/', resource.__name__).lower()
-
-    def create_api_client(self, url='localhost:5001', **kwargs):
-        """Create an API client from the API routes definitions."""
-        c = BaseClient(url, **kwargs)
-        for r in self.routes:
-            c.register(CRUDEndpoint, r[1].replace('/<id>', ''), r[2])
-        return c
+    # def create_api_client(self, url='localhost:5001', **kwargs):
+    #     """Create an API client from the API routes definitions."""
+    #     c = BaseClient(url, **kwargs)
+    #     # for r in self.routes:
+    #     #     pnames = [b.__name__ for b in r[0].__bases__]
+    #     #     if 'CRUD' in pnames:
+    #     #         c.register(CRUDEndpoint, r[1].replace('/<id>', ''), r[2])
+    #     return c
 
     def register_resources(self):
         """Register all API resources with our Flask-Restful API."""
-        for r in self.resources:
-            parent_classes = [i.__name__ for i in inspect.getmro(r)]
-            if 'CRUD' in parent_classes:
-                # Duplicate 'single' resource to make identical one for 'collection'
-                r_col = type(r.__name__ + '_collection', r.__bases__, dict(r.__dict__))
-                r_col.collection = True
+        for res in self.resources:
+            cls_ = res.resource_name()
+            routes = res.get_routes()
+            # log.info(routes)
 
-                # Get resource paths (from class name or through class attribute 'path')
-                rpath = self.get_path(r)
-                rpath_col = self.get_path(r_col)
+            log.info(routes)
 
-                # Add resources to API
-                self.api.add_resource(r, rpath)
-                self.api.add_resource(r_col, rpath_col)
-                self.routes.append((r.__name__, rpath, rpath_col))
+            if all(r[1] is None for r in routes): # multiple endpoints with same endpoint
+                urls = [r[0] for r in routes]
+                self.api.add_resource(res, *urls)
+                self.routes.append((res,) + tuple(urls))
+                # log.info("%s --> %s" % (cls_, urls))
+
             else:
-                rpath = getattr(r, 'path', None)
-                if rpath is not None:
-                    if isinstance(r.path, list):
-                        self.api.add_resource(r, *rpath)
-                    else:
-                        self.api.add_resource(r, rpath)
-                else:
-                    rpath = os.path.join('/', *re.findall('[A-Z][^A-Z]*', r.__name__)).lower()
-                    self.api.add_resource(r, rpath)
+                for url, endpoint in routes:
+                    self.api.add_resource(res, url, endpoint=endpoint)
+                    self.routes.append((res, url))
+                    # log.info("%s --> %s --> %s" % (cls_, url, endpoint))
 
     def register_extensions(self, extensions=[]):
         """Register all Flask extensions defined in `extensions.py` with our Flask

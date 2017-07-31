@@ -82,3 +82,9 @@ def transform_html(data, headers=None):
     resp = current_app.make_response(data_html)
     resp.headers.extend(headers or {})
     return resp
+
+def get_required_args(func):
+    args, varargs, varkw, defaults = inspect.getargspec(func)
+    if defaults:
+        args = args[:-len(defaults)]
+    return args

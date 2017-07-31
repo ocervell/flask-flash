@@ -5,14 +5,6 @@ from cgi import escape
 
 log = logging.getLogger(__name__)
 
-def logit(func):
-    def wrapper(*args, **kwargs):
-        log.debug("Running %s with %s" % (func.__name__, args))
-        ret = func(*args, **kwargs)
-        log.debug("Exiting %s" % func.__name__)
-        return ret
-    return wrapper
-
 class APIRequestException(Exception):
     def __init__(self, url, code, reason, description=None):
         self._url = url
@@ -46,7 +38,7 @@ class BaseClient(object):
     """Low level client that implements basic HTTP functions.
 
     Args:
-        host (str, optional): The API hostname. Default: 'devopsconsole.aws.cccis.com'
+        host (str, optional): The API hostname. Default: 'localhost'
         port (int, optional): The API port. Default: 80
         auth (tuple): A tuple containing username and password.
     """
@@ -65,8 +57,7 @@ class BaseClient(object):
     # Defaults to NGINX default max request size.
     DEFAULT_MAX_REQUEST_SIZE = 2900
 
-    def __init__(self, host, auth=(), use_cache=True,
-                 paginate=True, **kwargs):
+    def __init__(self, host, auth=(), use_cache=True, paginate=True, **kwargs):
         self.agent = Agent(host, **kwargs)
         if auth:
             self.username, self.password = auth
@@ -96,13 +87,11 @@ class BaseClient(object):
     def register(self, endpoint_class, single_route, multiple_route, name=None):
         """Register an endpoint with this client."""
         if name is None: name = multiple_route.split('/')[-1]
-        print "New endpoint: %s" % name
         self.__dict__[name] = endpoint_class(self, single_route, multiple_route)
 
     #---------#
     # General #
     #---------#
-    @logit
     def get(self, relative_url, use_token=True, auth=()):
         """Sends a GET request to the relative URL passed as argument.
 
@@ -121,7 +110,6 @@ class BaseClient(object):
         """
         return self._request('get', relative_url, use_token=use_token, auth=auth)
 
-    @logit
     def get_with_params(self, relative_url, **kwargs):
         """Sends a GET request to the relative URL passed as argument that
         support URL parameters.
@@ -163,7 +151,6 @@ class BaseClient(object):
             data.extend(part_data)
         return data
 
-    @logit
     def delete_with_params(self, relative_url, **kwargs):
         data = {'deleted': False, 'count': 0}
         urls = self._construct_query_urls(relative_url, **kwargs)
@@ -175,7 +162,6 @@ class BaseClient(object):
             data['count'] += part_data['count']
         return data
 
-    @logit
     def post(self, relative_url, json={}, use_token=True, auth=()):
         """Sends a POST request to the relative URL passed as argument.
 
@@ -197,7 +183,6 @@ class BaseClient(object):
         return self._request('post', relative_url, json=json, use_token=use_token,
                              auth=auth)
 
-    @logit
     def put(self, relative_url, json={}, use_token=True, auth=(), **filters):
         """Send PUT request to the relative URL passed as argument.
 
@@ -214,11 +199,10 @@ class BaseClient(object):
             > json_data = json.load('some_file.json')
             > c.update('/action/1', json=json_data)
         """
-        return self._request('put', relative_url, json=json, use_token=True,
-                             auth=auth, **filters)
+        url = self._construct_query_urls(relative_url, **filters)[0]
+        return self._request('put', url, json=json, use_token=True, auth=auth)
 
-    @logit
-    def delete(self, relative_url, json={}, use_token=True, auth=(), **filters):
+    def delete(self, relative_url, json={}, use_token=True, auth=()):
         """Send DELETE request to the relative URL passed as argument.
 
         Args:
@@ -234,13 +218,11 @@ class BaseClient(object):
             > c.delete('/action/1')
         """
         return self._request('delete', relative_url, json=json, use_token=True,
-                             auth=auth, **filters)
+                             auth=auth)
 
-    @logit
     def head(self, relative_url, use_token=True, auth=(), **filters):
         url = self._construct_query_urls(relative_url, **filters)[0]
-        return self._request('head', url, json=json, use_token=True,
-                             auth=auth)
+        return self._request('head', url, json=json, use_token=True, auth=auth)
 
     #---------#
     # PRIVATE #
@@ -446,34 +428,37 @@ class CRUDEndpoint(Endpoint):
         return self.multiple
 
     def create(self, json=None, **params):
-        """Create a new resource by sending POST request with `params` as JSON
+        """Create a new resource by sending POST request with `kwargs` as JSON
         in the body.
 
-        Examples of resource creation:
-        >>> params = {'id': 4, 'action': 'status'}
-        >>> c.create(**params)
+        Assuming you have a model in your API with the following fields:
+        - action (String)
+        - name (String)
+        - args (JSON)
+        Direct resource creation (using **params)
+        >>> c.create(action='status', name='My Action', )
+        {
+            'id': 1,
+            'action': 'status',
+            'name': 'My Action',
+            'args': {'extra': 1, 'parameter': 2}
+        }
+
         >>> param = {
         ...   'any': 4,
         ...   'of': '',
         ...   'the': True,
-        ...   'required': True,
-        ...   'fields': [] }
-        >>> c.create(**params)
+        ...   'model': True,
+        ...   'field': []
+        ... }
+        >>> c.create(**kwargs)
         """
-        if json is not None: params = json
-        return self.client.post('{0}'.format(self.multiple), json=params)
-
-    def create_multiple(self, defs):
-        return self.client.post('{0}'.format(self.multiple), json=defs)
-
-    def get_or_create(self, *args, **kwargs):
-        obj = self.get(*args, **kwargs)
-        if not obj or obj is None:
-            return self.create(*args, **kwargs)
+        json = json or params
+        return self.client.post('{0}'.format(self.multiple), json=json)
 
     def get(self, id=None, paginate=None, page=None, per_page=None,
-            order_by=None, sort=None, match=None, use_cache=None, **filters):
-        """Sends GET request with either id or **filters url-encoded.
+            order_by=None, sort=None, match=None, use_cache=None, **params):
+        """Sends GET request with either id or **params url-encoded.
         Allows filtering of query by url-encoding parameters.
 
         This mean you can do:
@@ -483,43 +468,48 @@ class CRUDEndpoint(Endpoint):
             `<host>/api/myendpoint?id=1,5,100&p1=SCHEDULED,RUNNING&p2=True`
 
         Args:
-            filters: A dictionary of parameters to filter the GET query on.
+            params: A dictionary of parameters to filter the GET query on.
 
         Raises:
-            :obj:`APIRequestException`: If one of **filters not present in the
-                database model was used (400), if one of **filters is
+            :obj:`APIRequestException`: If one of **params not present in the
+                database model was used (400), if one of **params is
                 read-forbidden, or if the `id` passed doesn't point an existing
                 resource.
 
         Returns:
-            list|dict: A list of dict (if  **filters is not empty) or a single
+            list|dict: A list of dict (if  **params is not empty) or a single
                 dict (if only one `id` was passed).
         """
 
         # Convert id if necessary
-        id = id or filters.get('id')
+        id = id or params.get('id')
         if isinstance(id, int) or isinstance(id, basestring):
             return self.client.get('{0}/{1}'.format(self.single, id))
-        filters['id'] = id
+        params['id'] = id
 
         # Handle pagination
-        if paginate is not None:  filters['paginate'] = paginate
-        else:                     filters['paginate'] = self.client.paginate
-        if per_page is not None:  filters['per_page'] = per_page
-        if page is not None:      filters['page'] = page
+        if paginate is not None:  params['paginate'] = paginate
+        else:                     params['paginate'] = self.client.paginate
+        if per_page is not None:  params['per_page'] = per_page
+        if page is not None:      params['page'] = page
 
         # Handle ordering / sorting
-        if order_by is not None:  filters['order_by'] = order_by
-        if sort is not None:      filters['sort'] = sort
+        if order_by is not None:  params['order_by'] = order_by
+        if sort is not None:      params['sort'] = sort
 
         # Handle filter matches (dirty fix)
-        if match is not None:     filters['match'] = [match]
+        if match is not None:     params['match'] = [match]
 
         # Handle cache
-        if use_cache is not None: filters['cache'] = use_cache
-        else:                     filters['cache'] = self.client.use_cache
+        params['cache'] = use_cache or self.client.use_cache
 
-        return self.client.get_with_params('{0}'.format(self.multiple), **filters)
+        return self.client.get_with_params('{0}'.format(self.multiple), **params)
+
+    def get_or_create(self, *args, **kwargs):
+        obj = self.get(*args, **kwargs)
+        if obj:
+            return obj[0]
+        return self.create(*args, **kwargs)
 
     def update(self, ids, **params):
         """Sends GET request with either 'id' or **params url-encoded.
@@ -559,11 +549,14 @@ class CRUDEndpoint(Endpoint):
             list|dict: A list of dict (if  **params is not empty) or a single
                 dict (if only one `id` was passed).
         """
+        filters = {}
+        _action = params.get('_action', None)
+        if _action is not None: filters['_action'] = _action
         if isinstance(ids, list):
             json = self.client._build_put_data(ids, **params)
-            return self.client.put('{0}'.format(self.multiple), json=json)
+            return self.client.put('{0}'.format(self.multiple), json=json, **filters)
         elif isinstance(ids, int) or isinstance(ids, basestring):
-            return self.client.put('{0}/{1}'.format(self.single, ids), json=params)
+            return self.client.put('{0}/{1}'.format(self.single, ids), json=params, **filters)
         else:
             raise TypeError("`update` first argument `ids` must be a list or an int")
 

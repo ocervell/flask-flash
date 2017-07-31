@@ -21,7 +21,8 @@ setup(name='Flask-Flash',
         'requests',
         'numpy',
         'pyyaml',
-        'faker'
+        'faker',
+        'inflect'
       ],
       packages=[
         'flask_flash',

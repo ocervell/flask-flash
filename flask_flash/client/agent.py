@@ -24,8 +24,8 @@ class Agent(object):
     """
     def __init__(self, url, **params):
         self.host, self.port = Agent.get_host_port(url)
-        self.base_url = 'http://{}:{}/api'.format(self.host, self.port)
-        log.debug("Agent initialized at %s" % (self.base_url))
+        api_suffix = params.get('api_suffix', 'api').lstrip('/')
+        self.base_url = 'http://{}:{}/{}'.format(self.host, self.port, api_suffix)
 
     def request(self, method, url, auth=(), json={}, absolute=False, log_401=True):
         """Wrapper around `requests` lib methods."""
@@ -56,7 +56,7 @@ class Agent(object):
             finally:
                 message = "%s | %s | %s | %s s" % (method.upper(), rel_url, success, (time.time() - now))
                 if success:
-                    log.info(message)
+                    log.debug(message)
                 else:
                     log.error(message)
         return r
