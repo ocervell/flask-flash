@@ -346,7 +346,7 @@ class CRUD(Resource):
                 query = query.order_by(column_obj)
 
         # Paginate query (paginate=true/false, per_page=<n>, page=<n> syntax)
-        if paginate is True and request.method in ['GET', 'PUT', 'DELETE']:
+        if paginate is True and request.method in ['GET', 'PUT']:
             page = self.opts.get('page')
             per_page = self.opts.get('per_page')
             query = query.paginate(page, per_page, False)
