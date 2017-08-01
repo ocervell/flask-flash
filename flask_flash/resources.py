@@ -209,7 +209,7 @@ class CRUD(Resource):
 
     def __init__(self):
         # Decorate get function to enable caching
-        self.get = cache.cached(query_string=True)(self.get)
+        # self.get = cache.cached(query_string=True)(self.get)
 
         # Set primary key name directly from db model
         self.pk = self.pk or inspect(self.model).primary_key[0].name
