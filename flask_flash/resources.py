@@ -457,7 +457,7 @@ class CRUD(Resource):
     @errorhandler
     def delete(self, id=None):
         if id is not None:
-            dbo = self.query.get(id)
+            dbo = self.original_query.get(id)
             if not dbo:
                 return jsonify({
                     self.pk: id,
@@ -472,9 +472,9 @@ class CRUD(Resource):
                 'deleted': True
             })
         else:
-            # g['order_by'], g['sort'] = None, None # .delete() cannot be called otherwise
-            count = self.query.count()
-            self.query.delete()
+            query = self.get_query()
+            count = query.count()
+            query.delete()
             db.session.commit()
             return jsonify({
                 'count': count,
