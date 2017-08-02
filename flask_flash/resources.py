@@ -370,7 +370,7 @@ class CRUD(Resource):
         }
         return resp
 
-    @cache.cached(query_string=True, timeout=10)
+    # @cache.cached(query_string=True, timeout=10)
     @json
     @errorhandler
     def get(self, id=None):
@@ -430,7 +430,7 @@ class CRUD(Resource):
             objs.append(obj)
 
         # Clear cache
-        if self.cached: cache.clear()
+        # if self.cached: cache.clear()
 
         # Set 'many' option for jsonify
         self.opts['many'] = (id is None)
@@ -453,7 +453,7 @@ class CRUD(Resource):
         db.session.commit()
 
         # Clear cache
-        if self.cached: cache.clear()
+        # if self.cached: cache.clear()
 
         # Set 'many' option for jsonify
         self.opts['many'] = (len(objs) > 1)
@@ -472,7 +472,7 @@ class CRUD(Resource):
             log.info("{model} | DELETE {id}".format(model=self.model_title, id=id))
             db.session.delete(dbo)
             db.session.commit()
-            if self.cached: cache.clear()
+            # if self.cached: cache.clear()
             return jsonify({
                 self.pk: id,
                 'deleted': True
@@ -482,7 +482,7 @@ class CRUD(Resource):
             count = query.count()
             query.delete()
             db.session.commit()
-            if self.cached: cache.clear()
+            # if self.cached: cache.clear()
             return jsonify({
                 'count': count,
                 'deleted': True
