@@ -269,16 +269,19 @@ class CRUD(Resource):
         """Get the filtered query from the request parameters."""
         query = self.original_query
         fields = self.fields
-        filters = self.opts.get('matches')
+        filters = self.opts.get('match')
         order_by = self.opts.get('order_by')
         sort = self.opts.get('sort')
         limit = self.opts.get('limit')
         offset = self.opts.get('offset')
         paginate = self.opts.get('paginate')
+        page = self.opts.get('page')
+        per_page = self.opts.get('per_page')
 
         # Direct filter on column (field=value syntax)
         if fields and request.method in ['HEAD', 'GET', 'PUT', 'DELETE']:
             self.raise_if_forbidden(fields)
+            log.debug("Filtering on columns: %s" % fields)
             fields = self.convert_fields(fields)
             for k, v in fields.items():
                 column = getattr(self.model, k, None)
@@ -290,6 +293,7 @@ class CRUD(Resource):
         # Filter on column by operation (match=[filter1, filter2, ..] syntax)
         if filters is not None and request.method in ['HEAD', 'GET', 'PUT', 'DELETE']:
             self.raise_if_forbidden([f[0] for f in filters])
+            log.debug("Filtering with filters: %s" % filters)
             for raw in filters:
                 try:
                     key, op, values = tuple(raw)
@@ -335,8 +339,8 @@ class CRUD(Resource):
 
         # Order query by field (order_by=<field>, sort=asc/desc syntax)
         if order_by is not None and request.method in ['GET', 'PUT']:
-            log.debug("Ordering query by key %s (%s)" % (order_by, sort))
             self.raise_if_forbidden(order_by)
+            log.debug("Ordering query by key %s (%s)" % (order_by, sort))
             column_obj = getattr(self.model, order_by)
             if sort == 'desc':
                 query = query.order_by(column_obj.desc())
@@ -347,8 +351,7 @@ class CRUD(Resource):
 
         # Paginate query (paginate=true/false, per_page=<n>, page=<n> syntax)
         if paginate is True and request.method in ['GET', 'PUT']:
-            page = self.opts.get('page')
-            per_page = self.opts.get('per_page')
+            log.debug("Pagination enabled | Page: %s | Records per page: %s" % (page, per_page))
             query = query.paginate(page, per_page, False)
 
         # Return query
