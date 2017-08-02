@@ -2,7 +2,6 @@ import logging, pprint, json, yaml, time
 from flask import g, request, Response, url_for, jsonify, current_app
 from flask_restful import abort, Resource as FlaskRestfulResource
 from flask_restful.reqparse import RequestParser
-from redis import Redis, ConnectionError
 from sqlalchemy import desc, asc
 from sqlalchemy.orm.session import make_transient
 from extensions import db, auth, cache
@@ -371,6 +370,7 @@ class CRUD(Resource):
         }
         return resp
 
+    @cache.cached(query_string=True, timeout=10)
     @json
     @errorhandler
     def get(self, id=None):
@@ -428,7 +428,9 @@ class CRUD(Resource):
             db.session.add(obj)
             db.session.commit()
             objs.append(obj)
-            # if self.cached: self.clear_cache(id=id)
+
+        # Clear cache
+        if self.cached: cache.clear()
 
         # Set 'many' option for jsonify
         self.opts['many'] = (id is None)
@@ -451,7 +453,7 @@ class CRUD(Resource):
         db.session.commit()
 
         # Clear cache
-        # if self.cached: self.clear_cache()
+        if self.cached: cache.clear()
 
         # Set 'many' option for jsonify
         self.opts['many'] = (len(objs) > 1)
@@ -470,6 +472,7 @@ class CRUD(Resource):
             log.info("{model} | DELETE {id}".format(model=self.model_title, id=id))
             db.session.delete(dbo)
             db.session.commit()
+            if self.cached: cache.clear()
             return jsonify({
                 self.pk: id,
                 'deleted': True
@@ -479,6 +482,7 @@ class CRUD(Resource):
             count = query.count()
             query.delete()
             db.session.commit()
+            if self.cached: cache.clear()
             return jsonify({
                 'count': count,
                 'deleted': True
