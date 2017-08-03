@@ -453,7 +453,7 @@ class CRUD(Resource):
         db.session.commit()
 
         # Clear cache
-        # if self.cached: cache.clear()
+        if self.cached: cache.clear()
 
         # Set 'many' option for jsonify
         self.opts['many'] = (len(objs) > 1)
@@ -472,21 +472,22 @@ class CRUD(Resource):
             log.info("{model} | DELETE {id}".format(model=self.model_title, id=id))
             db.session.delete(dbo)
             db.session.commit()
-            # if self.cached: cache.clear()
+            if self.cached: cache.clear()
             return jsonify({
-                self.pk: id,
-                'deleted': True
+                'deleted': id
             })
         else:
             query = self.get_query()
             count = query.count()
-            query.delete()
-            db.session.commit()
-            # if self.cached: cache.clear()
+            ids = [o.id for o in query.all()]
+            status_code = 200
+            if ids:
+                for id in ids:
+                    r = self.delete(id=id)
+                    status_code |= max(r.status_code, status_code)
             return jsonify({
-                'count': count,
-                'deleted': True
-            })
+                'deleted': ids
+            }, status_code)
 
     #---------#
     # PRIVATE #

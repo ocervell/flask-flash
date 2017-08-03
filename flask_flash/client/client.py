@@ -152,14 +152,13 @@ class BaseClient(object):
         return data
 
     def delete_with_params(self, relative_url, **kwargs):
-        data = {'deleted': False, 'count': 0}
+        data = []
         urls = self._construct_query_urls(relative_url, **kwargs)
         i = 0
         for u in urls:
             i += 1
             part_data = self.delete(u)
-            data['deleted'] |= part_data['deleted']
-            data['count'] += part_data['count']
+            data.extend(part_data)
         return data
 
     def post(self, relative_url, json={}, use_token=True, auth=()):
@@ -605,15 +604,18 @@ class CRUDEndpoint(Endpoint):
 
     def delete(self, ids=None, match=None, **filters):
         """Delete objects identified either by `ids` or by a list of filters.
-        TODO: Review this for objects where 'id' is not a primary key.
         """
-        if ids is None and filters:
-            ids = [a['id'] for a in self.get(**filters)]
-        if isinstance(ids, list):
+        if ids is None:
+            return self.client.delete_with_params('{0}'.format(self.multiple), **filters)
+
+        elif isinstance(ids, list):
+            filters['id'] = ','.join(map(str, ids))
             if match is not None:
                 filters['match'] = [match]
             return self.client.delete_with_params('{0}'.format(self.multiple), **filters)
+
         elif isinstance(ids, int) or isinstance(ids, basestring):
             return self.client.delete('{0}/{1}'.format(self.single, ids))
+
         else:
             raise TypeError("`delete` first argument `ids` must be a list or an int")
