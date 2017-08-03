@@ -152,13 +152,13 @@ class BaseClient(object):
         return data
 
     def delete_with_params(self, relative_url, **kwargs):
-        data = []
+        data = {}
         urls = self._construct_query_urls(relative_url, **kwargs)
         i = 0
         for u in urls:
             i += 1
             part_data = self.delete(u)
-            data.extend(part_data)
+            data.update(part_data)
         return data
 
     def post(self, relative_url, json={}, use_token=True, auth=()):

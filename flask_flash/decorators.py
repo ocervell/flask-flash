@@ -23,16 +23,10 @@ def errorhandler(f):
             url = urlparse.urlparse(request.url)
             url_str = url.path
             params = urlparse.parse_qs(url.query)
-            if log.isEnabledFor(logging.INFO):
-                log.info("{fname} | {url} | {duration:.4f}s".format(
-                    fname=f.__name__.upper(),
-                    url=url_str,
-                    duration=(end - start)))
-            elif log.isEnabledFor(logging.DEBUG):
-                log.debug("{fname} | {url} | {duration:.4f}s".format(
+            log.info("{fname} | {url} | {duration:.4f}s \n{params}".format(
                 fname=f.__name__.upper(),
+                params=pprint.pformat(self.request_args),
                 url=url_str,
-                params=params,
                 duration=(end - start)))
             return ret
 

@@ -229,6 +229,9 @@ class CRUD(Resource):
         self.parser.add_argument('cache', type=str2bool, default=True, location='args')
         self.parser.add_argument('_action', type=str, default='overwrite', choices=['overwrite', 'append'], location='args')
         self.fields, self.opts = self._parse_args()
+        self.request_args = self.fields.copy()
+        self.request_args.update(self.opts)
+        self.request_args = {k:v for k,v in self.request_args.items() if v}
 
     @classmethod
     def get_urls(cls):
@@ -477,17 +480,22 @@ class CRUD(Resource):
                 'deleted': id
             })
         else:
+            status_code = 200
             query = self.get_query()
             count = query.count()
+            original_count = self.original_query.count()
+            if count == original_count: # Prevents from deleting everything if nothing matched
+                return jsonify({
+                    'deleted': []
+                })
             ids = [o.id for o in query.all()]
-            status_code = 200
             if ids:
                 for id in ids:
                     r = self.delete(id=id)
                     status_code |= max(r.status_code, status_code)
             return jsonify({
                 'deleted': ids
-            }, status_code)
+            })
 
     #---------#
     # PRIVATE #
