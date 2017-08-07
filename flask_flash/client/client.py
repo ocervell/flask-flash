@@ -504,8 +504,10 @@ class CRUDEndpoint(Endpoint):
 
         return self.client.get_with_params('{0}'.format(self.multiple), **params)
 
-    def get_or_create(self, *args, **kwargs):
-        obj = self.get(*args, **kwargs)
+    def get_or_create(self, *args, **kwargs, equality_fields=[]):
+        if equality_fields:
+            filters = { k:v for k,v in kwargs.items() if k in equality_fields }
+            obj = self.get(*args, **filters)
         if obj:
             return obj[0]
         return self.create(*args, **kwargs)

@@ -78,7 +78,8 @@ class Flash(object):
 
         # Create Flask-Script manager
         self.manager = Manager(self.app)
-        self.shell = Shell(make_context=lambda: dict(app=self.app, db=self.db, c=self.client))
+        # self.shell = Shell(make_context=lambda: dict(app=self.app, db=self.db, c=self.client))
+        self.shell = Shell(make_context=lambda: dict(app=self.app, db=self.db))
         self.manager.add_command("runserver", self.server)
         self.manager.add_command("shell", self.shell)
         self.manager.add_command("db", MigrateCommand)
@@ -97,21 +98,14 @@ class Flash(object):
         for res in self.resources:
             cls_ = res.resource_name()
             routes = res.get_routes()
-            # log.info(routes)
-
-            log.info(routes)
-
             if all(r[1] is None for r in routes): # multiple endpoints with same endpoint
                 urls = [r[0] for r in routes]
                 self.api.add_resource(res, *urls)
                 self.routes.append((res,) + tuple(urls))
-                # log.info("%s --> %s" % (cls_, urls))
-
             else:
                 for url, endpoint in routes:
                     self.api.add_resource(res, url, endpoint=endpoint)
                     self.routes.append((res, url))
-                    # log.info("%s --> %s --> %s" % (cls_, url, endpoint))
 
     def register_extensions(self, extensions=[]):
         """Register all Flask extensions defined in `extensions.py` with our Flask
