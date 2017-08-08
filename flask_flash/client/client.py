@@ -245,11 +245,11 @@ class BaseClient(object):
             raise APIRequestException(relative_url, 400, "Method %s is not supported." % method)
 
         # Authentify with / without token
-        if use_token:
-            if self.token is not None:
-                auth = (self.token, '')
-        else:
-            if self.username is not None and self.password is not None:
+        if not auth: # no auth passed, build it
+            if use_token:
+                if self.token is not None:
+                    auth = (self.token, '')
+            elif self.username is not None and self.password is not None:
                 auth = (self.username, self.password)
 
         # Request data with agent
