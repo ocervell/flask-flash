@@ -23,11 +23,15 @@ def errorhandler(f):
             url = urlparse.urlparse(request.url)
             url_str = url.path
             params = urlparse.parse_qs(url.query)
-            log.info("{fname} | {url} | {duration:.4f}s \n{params}".format(
+            data = request.get_json()
+            log.info("{fname} | {url} | {duration:.4f}s".format(
                 fname=f.__name__.upper(),
-                params=pprint.pformat(self.request_args),
                 url=url_str,
                 duration=(end - start)))
+            if params:
+                log.debug("URL Params: \n{params}".format(params=pprint.pformat(self.request_args)))
+            if data:
+                log.debug("Data: \n{data}".format(data=request.get_json()))
             return ret
 
         except APIException as e:  # API Exceptions
