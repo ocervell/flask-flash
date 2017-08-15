@@ -138,10 +138,6 @@ class Protected(Resource):
     """A Flash resource protected by login."""
     decorators = [auth.login_required]
 
-    """Decorator handling exceptions for each of the HTTP methods defined
-    def errorhandler(f):
-    a CRUD Resource.
-    """
 
 class CRUD(Resource):
     """A Flash resource implementing CRUD model.
@@ -209,7 +205,7 @@ class CRUD(Resource):
     def __init__(self):
         # Decorate get function to enable caching
         # self.get = cache.cached(query_string=True)(self.get)
-
+        log.debug("Request URL: %s" % request.url)
         # Set primary key name directly from db model
         self.pk = self.pk or inspect(self.model).primary_key[0].name
         self.model_title = self.model.__name__

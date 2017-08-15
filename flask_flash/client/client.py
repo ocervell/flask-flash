@@ -358,8 +358,10 @@ class Endpoint(object):
     Args:
         client: An instance of API client to use to carry requests out.
     """
-    def __init__(self, client):
+    def __init__(self, client, parent=None):
         self.client = client
+        if parent is not None:
+            self.parent = parent
 
 
 class CRUDEndpoint(Endpoint):
@@ -417,8 +419,8 @@ class CRUDEndpoint(Endpoint):
         APIRequestException: If the response HTTP status code of an object is
             not a valid status code.
     """
-    def __init__(self, client, single, multiple):
-        super(CRUDEndpoint, self).__init__(client)
+    def __init__(self, client, single, multiple, parent=None):
+        super(CRUDEndpoint, self).__init__(client, parent=parent)
         self.single = single
         self.multiple = multiple
 
