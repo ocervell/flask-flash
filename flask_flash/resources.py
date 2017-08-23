@@ -402,9 +402,10 @@ class CRUD(Resource):
             # Check for object existence
             oid = d.pop(self.pk, None) or d.pop('id', None) or id
             if oid is None:
-                raise ResourceFieldMissing(self.model_title, 'id', request.method)
+                raise ResourceFieldMissing(self.model_title, self.pk, request.method)
 
             # Get object to update
+            log.info("Updating %s" % oid)
             obj = self.original_query.get(oid)
             if not obj:
                  raise ResourceNotFound(self.model_title, oid)

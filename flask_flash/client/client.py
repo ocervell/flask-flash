@@ -514,7 +514,7 @@ class CRUDEndpoint(Endpoint):
                 return obj[0]
         return self.create(**kwargs)
 
-    def update(self, ids, **params):
+    def update(self, ids=None, json=None, **params):
         """Sends GET request with either 'id' or **params url-encoded.
         Allows filtering of query by url-encoding parameters.
 
@@ -555,16 +555,16 @@ class CRUDEndpoint(Endpoint):
         filters = {}
         _action = params.get('_action', None)
         if _action is not None: filters['_action'] = _action
-        if isinstance(ids, list):
-            json = self.client._build_put_data(ids, **params)
-            return self.client.put('{0}'.format(self.multiple), json=json, **filters)
-        elif isinstance(ids, int) or isinstance(ids, basestring):
-            return self.client.put('{0}/{1}'.format(self.single, ids), json=params, **filters)
-        else:
-            raise TypeError("`update` first argument `ids` must be a list or an int")
-
-    def update_multiple(self, defs):
-        return self.client.put('{0}'.format(self.multiple), json=defs)
+        if json is not None:
+            return self.client.put('{0}'.format(self.multiple), json=json)
+        elif ids is not None:
+            if isinstance(ids, list):
+                json = self.client._build_put_data(ids, **params)
+                return self.client.put('{0}'.format(self.multiple), json=json, **filters)
+            elif isinstance(ids, int) or isinstance(ids, basestring):
+                return self.client.put('{0}/{1}'.format(self.single, ids), json=params, **filters)
+            else:
+                raise TypeError("`update` first argument `ids` must be a list or an int")
 
     def count(self, match=None, use_cache=None, **filters):
         """Return the number of objects in the CRUD table asssociated with this
@@ -610,6 +610,7 @@ class CRUDEndpoint(Endpoint):
         """Delete objects identified either by `ids` or by a list of filters.
         """
         if ids is None:
+            log.info("No ids: Using filters: %s" % filters)
             return self.client.delete_with_params('{0}'.format(self.multiple), **filters)
 
         elif isinstance(ids, list):
