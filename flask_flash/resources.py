@@ -263,7 +263,11 @@ class CRUD(Resource):
     def original_query(self):
         return self.query or self.model.query
 
-    def get_query(self):
+    def get_query(self,
+            skip_column_filter=False,
+            skip_operation_filter=False,
+            skip_order_query=False,
+            skip_paginate_query=False):
         """Get the filtered query from the request parameters."""
         query = self.original_query
         fields = self.fields
@@ -277,7 +281,7 @@ class CRUD(Resource):
         per_page = self.opts.get('per_page')
 
         # Direct filter on column (field=value syntax)
-        if fields and request.method in ['HEAD', 'GET', 'PUT', 'DELETE']:
+        if not skip_column_filter and fields and request.method in ['HEAD', 'GET', 'PUT', 'DELETE']:
             self.raise_if_forbidden(fields)
             log.debug("Filtering on columns: %s" % fields)
             fields = self.convert_fields(fields)
@@ -289,7 +293,7 @@ class CRUD(Resource):
                     query = query.filter(column == v)
 
         # Filter on column by operation (match=[filter1, filter2, ..] syntax)
-        if filters is not None and request.method in ['HEAD', 'GET', 'PUT', 'DELETE']:
+        if not skip_operation_filter and filters is not None and request.method in ['HEAD', 'GET', 'PUT', 'DELETE']:
             self.raise_if_forbidden([f[0] for f in filters])
             log.debug("Filtering with filters: %s" % filters)
             for raw in filters:
@@ -336,7 +340,7 @@ class CRUD(Resource):
                         query = query.filter(getattr(column, attr)(v))
 
         # Order query by field (order_by=<field>, sort=asc/desc syntax)
-        if order_by is not None and request.method in ['GET', 'PUT']:
+        if not skip_order_query and order_by is not None and request.method in ['GET', 'PUT']:
             self.raise_if_forbidden(order_by)
             log.debug("Ordering query by key %s (%s)" % (order_by, sort))
             column_obj = getattr(self.model, order_by)
@@ -348,7 +352,7 @@ class CRUD(Resource):
                 query = query.order_by(column_obj)
 
         # Paginate query (paginate=true/false, per_page=<n>, page=<n> syntax)
-        if paginate is True and request.method in ['GET', 'PUT']:
+        if not skip_paginate_query and paginate is True and request.method in ['GET', 'PUT']:
             log.debug("Pagination enabled | Page: %s | Records per page: %s" % (page, per_page))
             query = query.paginate(page, per_page, False)
 
@@ -396,7 +400,7 @@ class CRUD(Resource):
             self.raise_if_forbidden(d, type='write')
 
             # Check for object existence
-            oid = d.pop('id', None) or d.pop(self.pk, None) or id
+            oid = d.pop(self.pk, None) or d.pop('id', None) or id
             if oid is None:
                 raise ResourceFieldMissing(self.model_title, 'id', request.method)
 
@@ -423,10 +427,12 @@ class CRUD(Resource):
             if errors:
                 raise SchemaValidationError(self.model_title, errors=errors)
 
-            # Add object to db and commit
-            db.session.add(obj)
-            db.session.commit()
+            # Add this db object
             objs.append(obj)
+
+        # Add all objects and commit
+        db.session.add_all(objs)
+        db.session.commit()
 
         # Clear cache
         # if self.cached: cache.clear()
@@ -460,6 +466,10 @@ class CRUD(Resource):
 
     @errorhandler
     def delete(self, id=None):
+        import logging
+        log = logging.getLogger('sqlalchemy')
+        log.addHandler(logging.StreamHandler())
+        log.setLevel(logging.DEBUG)
         if id is not None:
             dbo = self.original_query.get(id)
             if not dbo:
@@ -473,24 +483,14 @@ class CRUD(Resource):
             db.session.commit()
             if self.cached: cache.clear()
             return jsonify({
-                'deleted': id
+                'deleted': True
             })
         else:
-            status_code = 200
-            query = self.get_query()
-            count = query.count()
-            original_count = self.original_query.count()
-            if count == original_count: # Prevents from deleting everything if nothing matched
-                return jsonify({
-                    'deleted': []
-                })
-            ids = [o.id for o in query.all()]
-            if ids:
-                for id in ids:
-                    r = self.delete(id=id)
-                    status_code |= max(r.status_code, status_code)
+            query = self.get_query(skip_order_query=True, skip_paginate_query=True)
+            log.info("Delete query: %s" % query)
+            count = query.delete(synchronize_session='fetch')
             return jsonify({
-                'deleted': ids
+                'deleted': True
             })
 
     #---------#
