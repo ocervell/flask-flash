@@ -514,7 +514,7 @@ class CRUDEndpoint(Endpoint):
                 return obj[0]
         return self.create(**kwargs)
 
-    def update(self, ids=None, json=None, **params):
+    def update(self, id=None, **params):
         """Sends GET request with either 'id' or **params url-encoded.
         Allows filtering of query by url-encoding parameters.
 
@@ -538,14 +538,14 @@ class CRUDEndpoint(Endpoint):
             ]
 
         Args:
-            ids (int|list): A single `int` or a list of `int` identifying the
+            id (int|list): A single `int` or a list of `int` identifying the
                 action(s) to update.
             params: A dictionary of parameters to update.
 
         Raises:
             :obj:`APIRequestException`: If one of **params not present in the
                 database model was used (400), or if one of the resources
-                identified by `ids` does not exist (404), or if a parameter was
+                identified by `id` does not exist (404), or if a parameter was
                 write-forbidden (403).
 
         Returns:
@@ -555,16 +555,16 @@ class CRUDEndpoint(Endpoint):
         filters = {}
         _action = params.get('_action', None)
         if _action is not None: filters['_action'] = _action
-        if json is not None:
-            return self.client.put('{0}'.format(self.multiple), json=json)
-        elif ids is not None:
-            if isinstance(ids, list):
-                json = self.client._build_put_data(ids, **params)
-                return self.client.put('{0}'.format(self.multiple), json=json, **filters)
-            elif isinstance(ids, int) or isinstance(ids, basestring):
-                return self.client.put('{0}/{1}'.format(self.single, ids), json=params, **filters)
-            else:
-                raise TypeError("`update` first argument `ids` must be a list or an int")
+        if isinstance(id, list):
+            json = self.client._build_put_data(id, **params)
+            return self.client.put('{0}'.format(self.multiple), json=json, **filters)
+        elif isinstance(id, int) or isinstance(id, basestring):
+            return self.client.put('{0}/{1}'.format(self.single, id), json=params, **filters)
+        else:
+            raise TypeError("`update` first argument `id` must be a list or an int")
+
+    def update_multiple(self, json):
+        return self.client.put('{0}'.format(self.multiple), json=json)
 
     def count(self, match=None, use_cache=None, **filters):
         """Return the number of objects in the CRUD table asssociated with this
