@@ -4,9 +4,9 @@ from flask_restful import abort, Resource as FlaskRestfulResource
 from flask_restful.reqparse import RequestParser
 from sqlalchemy import desc, asc
 from sqlalchemy.orm.session import make_transient
-from extensions import db, auth, cache
+from extensions import db, auth, cache, ma
 from utils import *
-from decorators import json, errorhandler
+from decorators import json, errorhandler, add_schema
 from exceptions import NoPostData, SchemaValidationError, ResourceNotFound, \
                         ResourceFieldForbidden, FilterInvalid, \
                         FilterNotSupported
@@ -174,7 +174,7 @@ class CRUD(Resource):
     """
     model = None
 
-    """obj:`flask_marshmallow.ModelSchema`, required
+    """obj:`flask_marshmallow.ModelSchema`, optional
     The Flask Marshmallow schema.
     """
     schema = None
@@ -206,6 +206,13 @@ class CRUD(Resource):
         # Decorate get function to enable caching
         # self.get = cache.cached(query_string=True)(self.get)
         log.debug("Request URL: %s" % request.url)
+
+        # Set schema from db model if not set
+        if self.schema is None:
+            if not hasattr(self.model, 'Schema'):
+                self.model = add_schema(self.model)
+            self.schema = self.model.Schema
+
         # Set primary key name directly from db model
         self.pk = self.pk or inspect(self.model).primary_key[0].name
         self.model_title = self.model.__name__
@@ -243,14 +250,13 @@ class CRUD(Resource):
             single = join(default, '<id>')
             multiple = inflect.engine().plural(default)
         elif len(cls.url) == 2: # get user-defined urls
-            urls = map(strip_lslash, cls.url)
+            urls = [u.rstrip('/') for u in cls.url]
             if not urls[0]:
-                urls[0] = join(default, *params)
+                urls[0] = join(default, '<id>')
             if not urls[1]:
                 urls[1] = inflect.engine().plural(default)
-                # urls[1] = default
-            single = join(cls.urls_prefix, re.sub('<.*>', '', urls[0]), *params)
-            multiple = join(cls.urls_prefix, url[1])
+            single = join(cls.url_prefix, urls[0], '<id>')
+            multiple = join(cls.url_prefix, urls[1])
         else:
             raise TypeError("`url` must be either omitted or a tuple of size 2 for CRUD resources.")
         return [single, multiple]

@@ -5,7 +5,7 @@ from exceptions import APIException
 from sqlalchemy.exc import SQLAlchemyError
 from flask_restful import abort
 from flask import request, jsonify
-from extensions import db
+from extensions import db, ma
 import urlparse
 from os.path import join
 import pprint
@@ -72,3 +72,11 @@ def json(f):
         if self.schema is not None:
             return self.schema(**schema_opts).jsonify(objs)
     return wrapper
+
+def add_schema(cls):
+    """Decorator to add a default schema to a model."""
+    class Schema(ma.ModelSchema):
+        class Meta:
+            model = cls
+    cls.Schema = Schema
+    return cls

@@ -8,3 +8,7 @@ class User(CRUD):
 class Permission(CRUD):
     model = PermissionModel
     schema = PermissionSchema
+
+class Tracker(CRUD):
+    model = TrackerModel
+    # schema = TrackerSchema
