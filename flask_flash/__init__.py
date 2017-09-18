@@ -9,6 +9,7 @@ from flask_script import Manager, Shell, Server, prompt_bool
 from flask_migrate import Migrate, MigrateCommand
 import inspect
 import os, logging
+import inflect
 
 log = logging.getLogger(__name__)
 DEFAULT_PROFILE = os.environ.get('FLASK_API_PROFILE', 'default')
@@ -71,27 +72,37 @@ class Flash(object):
         self.server = Server(host, port)
 
         # Create Flask-Flash API client
-        # self.client = self.create_api_client(host + ':' + str(port))
+        self.client = self.create_api_client(host + ':' + str(port))
 
         # Create Flask-Migrate migrator
         migrate = Migrate(self.app, db)
 
         # Create Flask-Script manager
         self.manager = Manager(self.app)
-        # self.shell = Shell(make_context=lambda: dict(app=self.app, db=self.db, c=self.client))
-        self.shell = Shell(make_context=lambda: dict(app=self.app, db=self.db))
+        self.shell = Shell(make_context=lambda: dict(app=self.app, db=self.db, c=self.client))
         self.manager.add_command("runserver", self.server)
         self.manager.add_command("shell", self.shell)
         self.manager.add_command("db", MigrateCommand)
 
-    # def create_api_client(self, url='localhost:5001', **kwargs):
-    #     """Create an API client from the API routes definitions."""
-    #     c = BaseClient(url, **kwargs)
-    #     # for r in self.routes:
-    #     #     pnames = [b.__name__ for b in r[0].__bases__]
-    #     #     if 'CRUD' in pnames:
-    #     #         c.register(CRUDEndpoint, r[1].replace('/<id>', ''), r[2])
-    #     return c
+    def create_api_client(self, url='localhost:5001', **kwargs):
+        """Create an API client from the API routes definitions."""
+        c = BaseClient(url, **kwargs)
+        from itertools import groupby
+        from operator import itemgetter
+        routes = [list(group) for key, group in groupby(self.routes, itemgetter(0))]
+        endpoints = {}
+        for group in routes:
+            for route in group:
+                pnames = [b.__name__ for b in route[0].__bases__]
+                if 'CRUD' in pnames: # CRUD Endpoint
+                    name = inflect.engine().plural(route[0].__name__).lower()
+                    endpoint = route[1].replace('/<id>', '')
+                    if not name in endpoints:
+                        endpoints[name] = []
+                    endpoints[name].append(endpoint)
+        for endpoint_name, endpoint_routes in endpoints.items():
+            c.register(endpoint_name, CRUDEndpoint, endpoint_routes)
+        return c
 
     def register_resources(self):
         """Register all API resources with our Flask-Restful API."""
@@ -133,7 +144,7 @@ class BaseConfig(object):
     SQLALCHEMY_COMMIT_ON_TEARDOWN = True
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SQLALCHEMY_MAX_INPUT = 998
-    SQLALCHEMY_DATABASE_URI = 'sqlite:////tmp/test.db'
+    SQLALCHEMY_DATABASE_URI = 'sqlite:///database.sqlite'
     CACHE_CONFIG = {
         'CACHE_TYPE': 'redis',
         'CACHE_REDIS_HOST': 'localhost',
