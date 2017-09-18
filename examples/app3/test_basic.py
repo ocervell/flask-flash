@@ -25,31 +25,40 @@ class FlaskTestCase(unittest.TestCase):
     def tearDown(self):
         with self.app.app_context():
             self.db.session.remove()
+            self.db.drop_all()
 
-    def test_scenario_1(self):
-        nusers = random.randint(5, 100)
-        nperms = random.randint(5, 10)
-        uids = []
-        pids = []
+    # def test_scenario_1(self):
+    #     nusers = random.randint(5, 100)
+    #     nperms = random.randint(5, 10)
+    #     uids = []
+    #     pids = []
+    #     for n in range(nusers):
+    #         u = self.client.users.create(
+    #             first_name=faker.first_name(),
+    #             last_name=faker.last_name(),
+    #             country=faker.country()
+    #         )
+    #         uids.append(u['id'])
+    #     for n in range(nperms):
+    #         puids = random.sample(uids, random.randint(0, 5))
+    #         p = self.client.permissions.create(
+    #             name=faker.uri_path(deep=1),
+    #             users=['/api/user/%s' % id for id in puids]
+    #         )
+    #         pids.append(p['name'])
+    #
+    #     print "Adding %s user... OK" % nusers
+    #     self.client.permissions.delete()
+    #     self.client.users.delete()
+    #     self.assertEqual(self.client.users.count(), 0)
+    #     self.assertEqual(self.client.permissions.count(), 0)
+
+    def test_scenario_2(self):
+        nusers = 2500
         for n in range(nusers):
-            u = self.client.users.create(
-                first_name=faker.first_name(),
-                last_name=faker.last_name(),
-                country=faker.country()
-            )
-            uids.append(u['id'])
-        for n in range(nperms):
-            puids = random.sample(uids, random.randint(0, 5))
-            p = self.client.permissions.create(
-                name=faker.uri_path(deep=1),
-                users=['/api/user/%s' % id for id in puids]
-            )
-            pids.append(p['name'])
-
-        print "Adding %s user... OK" % nusers
-        all_uids = [u['id'] for u in self.client.users.get(paginate=False)]
-        all_pids = [p['name'] for p in self.client.permissions.get(paginate=False)]
-        self.client.users.delete(all_uids)
-        self.client.users.delete(all_pids)
-        self.assertEqual(self.client.users.count(), 0)
-        self.assertEqual(self.client.permissions.count(), 0)
+            kwargs = {
+                'first_name': faker.first_name(),
+                'last_name': faker.last_name(),
+                'country': faker.country()
+            }
+            self.client.users.create(**kwargs)

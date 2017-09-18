@@ -306,8 +306,7 @@ class CRUD(Resource):
                 try:
                     key, op, values = tuple(raw)
                     log.debug("Key: %s | Op: %s | Value: %s" % (key, op, values))
-                    if isinstance(values, basestring):
-                        values = values.split(',')
+                    if isinstance(values, basestring): values = values.split(',')
                 except ValueError as e:
                     log.exception(e)
                     raise FilterInvalid(self.model_title, raw)
@@ -411,7 +410,7 @@ class CRUD(Resource):
                 raise ResourceFieldMissing(self.model_title, self.pk, request.method)
 
             # Get object to update
-            log.info("Updating %s" % oid)
+            log.debug("Updating %s.%s with update: \n%s" % (self.model_title, oid, pprint.pformat(d)))
             obj = self.original_query.get(oid)
             if not obj:
                  raise ResourceNotFound(self.model_title, oid)
@@ -473,10 +472,6 @@ class CRUD(Resource):
 
     @errorhandler
     def delete(self, id=None):
-        import logging
-        log = logging.getLogger('sqlalchemy')
-        log.addHandler(logging.StreamHandler())
-        log.setLevel(logging.DEBUG)
         if id is not None:
             dbo = self.original_query.get(id)
             if not dbo:
@@ -485,7 +480,6 @@ class CRUD(Resource):
                     'deleted': False,
                     'message': ResourceNotFound(self.model_title, id).message
                 })
-            log.info("{model} | DELETE {id}".format(model=self.model_title, id=id))
             db.session.delete(dbo)
             db.session.commit()
             if self.cached: cache.clear()
@@ -494,7 +488,7 @@ class CRUD(Resource):
             })
         else:
             query = self.get_query(skip_order_query=True, skip_paginate_query=True)
-            log.info("Delete query: %s" % query)
+            log.debug("Delete query: \n%s" % query)
             count = query.delete(synchronize_session='fetch')
             return jsonify({
                 'deleted': True
@@ -536,12 +530,12 @@ class CRUD(Resource):
                     for v in values:
                         try:
                             converted = schema.fields[k]._deserialize(v, None, None)
+                            if res[k] is None:
+                                res[k] = [converted]
+                            else:
+                                res[k].append(converted)
                         except marshmallow.ValidationError:
                             pass
-                        if res[k] is None:
-                            res[k] = [converted]
-                        else:
-                            res[k].append(converted)
         return res
 
     def raise_if_forbidden(self, fields, type='read', allow_non_existent=True):

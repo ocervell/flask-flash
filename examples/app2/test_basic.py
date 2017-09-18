@@ -25,9 +25,10 @@ class FlaskTestCase(unittest.TestCase):
     def tearDown(self):
         with self.app.app_context():
             self.db.session.remove()
+            self.db.drop_all()
 
     def test_scenario_1(self):
-        nusers = random.randint(5, 100)
+        nusers = random.randint(10, 100)
         nperms = random.randint(5, 10)
         uids = []
         pids = []
@@ -39,11 +40,9 @@ class FlaskTestCase(unittest.TestCase):
             )
             uids.append(u['id'])
         for n in range(nperms):
-            puids = random.sample(uids, random.randint(0, 5))
-            p = self.client.permissions.create(
-                name=faker.uri_path(deep=1),
-                users=['/api/user/%s' % id for id in puids]
-            )
+            puids = random.sample(uids, random.randint(1, 5))
+            perm = {'name': faker.uri_path(deep=1), 'users': ['/api/user/%s' % id for id in puids]}
+            p = self.client.permissions.create(**perm)
             pids.append(p['name'])
 
         print "Adding %s user... OK" % nusers

@@ -81,13 +81,12 @@ class BaseClient(object):
                 option won't work.
                 """.format(base_url=self.agent.base_url)))
 
-    def get_token():
+    def get_token(self):
         raise NotImplementedError()
 
-    def register(self, endpoint_class, single_route, multiple_route, name=None):
+    def register(self, name, cls, routes):
         """Register an endpoint with this client."""
-        if name is None: name = multiple_route.split('/')[-1]
-        self.__dict__[name] = endpoint_class(self, single_route, multiple_route)
+        self.__dict__[name] = cls(self, routes[0], routes[1])
 
     #---------#
     # General #
@@ -305,6 +304,8 @@ class BaseClient(object):
         query_urls = []
         query_url = base + '?'
         for k, v in kwargs.items():
+            if isinstance(k, basestring):
+                k = str(k)
             if isinstance(v, list):
                 v = map(str, v)
                 v = ','.join(v)
