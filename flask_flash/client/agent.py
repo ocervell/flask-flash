@@ -8,11 +8,6 @@ import re
 import time
 pp = pprint.PrettyPrinter(indent=4)
 log = logging.getLogger(__name__)
-# s = requests.Session()
-# retries = Retry(total=5,
-#                 backoff_factor=0.1,
-#                 status_forcelist=[ 500, 502, 503, 504 ])
-# s.mount('http://', HTTPAdapter(max_retries=retries))
 
 class Agent(object):
     """Wrapper class to send HTTP queries to an API at http://host:port/api.
@@ -26,7 +21,15 @@ class Agent(object):
         self.host, self.port = Agent.get_host_port(url)
         api_suffix = params.get('api_suffix', 'api').lstrip('/')
         self.base_url = 'http://{}:{}/{}'.format(self.host, self.port, api_suffix)
+        retries = Retry(
+            total=5,
+            read=5,
+            connect=5,
+            backoff_factor=0.1,
+            status_forcelist=[500, 502, 503, 505],
+            raise_on_status=False)
         self.session = requests.Session()
+        self.session.mount(self.base_url, HTTPAdapter(max_retries=retries))
 
     def request(self, method, url, auth=(), json={}, absolute=False, log_401=True):
         """Wrapper around `requests` lib methods."""
