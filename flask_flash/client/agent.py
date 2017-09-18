@@ -26,6 +26,7 @@ class Agent(object):
         self.host, self.port = Agent.get_host_port(url)
         api_suffix = params.get('api_suffix', 'api').lstrip('/')
         self.base_url = 'http://{}:{}/{}'.format(self.host, self.port, api_suffix)
+        self.session = requests.Session()
 
     def request(self, method, url, auth=(), json={}, absolute=False, log_401=True):
         """Wrapper around `requests` lib methods."""
@@ -39,7 +40,7 @@ class Agent(object):
             rel_url = self._construct_relative_url(url)
         if url:
             self.before_request(method, url)
-            requests_method = getattr(requests, method)
+            requests_method = getattr(self.session, method)
             try:
                 if method == 'get' or method == 'head':
                     r = requests_method(url, auth=auth)
