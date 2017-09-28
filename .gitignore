@@ -3,6 +3,9 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.rst
+# Databases
+*.db
+*.sqlite
 
 # MacOSX
 .DS_Store

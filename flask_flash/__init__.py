@@ -1,3 +1,9 @@
+"""
+__init__.py
+~
+Maintainer: Olivier Cervello.
+Description: Flask-Flash API constructor and default config.
+"""
 from resources import *
 from extensions import *
 from exceptions import *
@@ -13,6 +19,8 @@ import inflect
 
 log = logging.getLogger(__name__)
 DEFAULT_PROFILE = os.environ.get('FLASK_API_PROFILE', 'default')
+DEFAULT_HOST = '0.0.0.0'
+DEFAULT_PORT = 5001
 
 class Flash(object):
     """Create a Flask-Flash API.
@@ -55,7 +63,7 @@ class Flash(object):
 
         # Create Flask-Restful API
         bp = Blueprint('api', __name__)
-        self.api = Api(bp)
+        self.api = Api(bp, catch_all_404s=True)
 
         # Add API resources to API
         self.register_resources()
@@ -67,9 +75,9 @@ class Flash(object):
         self.app.register_blueprint(bp, url_prefix=kwargs.get('url_prefix', '/api'))
 
         # Create Flask-Script Server
-        host = kwargs.get('host', "0.0.0.0")
-        port = kwargs.get('port', 5001)
-        self.server = Server(host, port)
+        host = kwargs.get('host', DEFAULT_HOST)
+        port = kwargs.get('port', DEFAULT_PORT)
+        # self.server = Server(host, port)
 
         # Create Flask-Flash API client
         self.client = self.create_api_client(host + ':' + str(port))
@@ -80,7 +88,7 @@ class Flash(object):
         # Create Flask-Script manager
         self.manager = Manager(self.app)
         self.shell = Shell(make_context=lambda: dict(app=self.app, db=self.db, c=self.client))
-        self.manager.add_command("runserver", self.server)
+        # self.manager.add_command("runserver", self.server)
         self.manager.add_command("shell", self.shell)
         self.manager.add_command("db", MigrateCommand)
 
@@ -117,6 +125,7 @@ class Flash(object):
                 for url, endpoint in routes:
                     self.api.add_resource(res, url, endpoint=endpoint)
                     self.routes.append((res, url))
+        log.debug(pprint.pformat(self.routes))
 
     def register_extensions(self, extensions=[]):
         """Register all Flask extensions defined in `extensions.py` with our Flask

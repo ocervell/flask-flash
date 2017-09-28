@@ -1,38 +1,17 @@
+"""
+client.py
+~
+Maintainer: Olivier Cervello.
+Description: Flask-Flash API base client and endpoints.
+"""
 from .agent import Agent
 import logging, json, yaml, textwrap, pprint
 import numpy as np
 from cgi import escape
+import requests
+from requests.exceptions import RequestException
 
 log = logging.getLogger(__name__)
-
-class APIRequestException(Exception):
-    def __init__(self, url, code, reason, description=None):
-        self._url = url
-        self._code = code
-        self._reason = reason
-        self._description = description
-
-    @property
-    def url(self):
-        return self._url
-
-    @property
-    def code(self):
-        return self._code
-
-    @property
-    def reason(self):
-        return self._reason
-
-    @property
-    def description(self):
-        return self._description
-
-    def __str__(self):
-        if self.description is not None:
-            return "{} | {} ({}) | {}".format(self.url, self.code, self.reason, self.description)
-        else:
-            return "{} | {} ({})".format(self.url, self.code, self.reason)
 
 class BaseClient(object):
     """Low level client that implements basic HTTP functions.
@@ -63,7 +42,7 @@ class BaseClient(object):
             self.username, self.password = auth
         try:
             self.token = self.get_token()['token']
-        except:
+        except Exception as e:
             self.token = None
         self.paginate = paginate
         self.use_cache = use_cache
@@ -225,7 +204,7 @@ class BaseClient(object):
     #---------#
     # PRIVATE #
     #---------#
-    def _request(self, method, relative_url, json={}, use_token=True, auth=()):
+    def _request(self, method, url, json={}, use_token=True, auth=(), retry_401=True):
         """Low level function to send any request through self.agent.
         Supports HTTP methods that are in SUPPORTED_HTTP_METHODS class attribute.
         Checks for authentication before sending request, and reloads the user
@@ -233,7 +212,7 @@ class BaseClient(object):
 
         Args:
             method (str): The HTTP method to use.
-            relative_url (str): The URL relative to the base API URL (e.g: /weblogic)
+            url (str): The URL relative to the base API URL (e.g: /weblogic)
             json (dict, optional): The JSON data to pass in the request body.
             use_token (bool, optional): True if token authentication, False if
                 username / password authentication.
@@ -241,7 +220,7 @@ class BaseClient(object):
         """
         # Check method
         if method not in self.SUPPORTED_HTTP_METHODS:
-            raise APIRequestException(relative_url, 400, "Method %s is not supported." % method)
+            raise ValueError("Method '%s' is not supported by this client." % method)
 
         # Authentify with / without token
         if not auth: # no auth passed, build it
@@ -251,42 +230,37 @@ class BaseClient(object):
             elif self.username is not None and self.password is not None:
                 auth = (self.username, self.password)
 
-        # Request data with agent
-        r = self.agent.request(method, relative_url, auth=auth, json=json, log_401=False)
-
-        # Handle empty responses
-        if r is None:
-            raise APIRequestException(relative_url, 500, "Internal server error", "No response returned from %s" % relative_url)
-
-        # If token expired, refresh token and try again
-        if use_token and r.status_code == 401:
-            self.token = self.get_token()['token']
-            auth = (self.token, '')
-            r = self.agent.request(method, relative_url, auth=auth, json=json)
-
-        # Raise exception if response has non-success HTTP code
-        if r.status_code != 200:
-            description = self.process_error_response(r)
-            raise APIRequestException(relative_url, r.status_code, r.reason, description)
-
-        if method == 'head':
-            return yaml.safe_load(r.headers['data'])
-
-        return r.json()
-
-    def process_error_response(self, r):
+        # Request data using agent.
+        # Retry on 401 to refresh the auth token.
         try:
-            data = r.json()['description']
-        except (ValueError, KeyError):
-            try:  # Try to load JSON still
-                data = json.load(data)['description']
-            except:
-                data = r.content
-                log.warning("API didn't return JSON")
-                pass
-        if isinstance(data, basestring):
-            data = data.replace('\\', '')
-        return data
+            r = self.agent.request(method, url, auth=auth, json=json)
+        except requests.exceptions.RequestException as e:
+            r = e.response
+            if (r is not None \
+                    and r.status_code == 401 \
+                    and retry_401 \
+                    and use_token \
+                    and self.token is not None):
+                return self.retry_401(r, method, url, auth=auth, json=json)
+            else:
+                raise
+
+        # Validate JSON headers
+        headers = r.headers
+        if headers.get('Content-Type') != 'application/json':
+            log.info("API did not return JSON content. Data: %s" % r.content)
+            raise Exception("API did not return JSON content")
+
+        # Return JSON data
+        if method == 'head':
+            return yaml.safe_load(headers['data'])
+        else:
+            return r.json()
+
+    def retry_401(self, r, method, url, auth=(), json={}):
+        self.token = self.get_token()['token']
+        auth = (self.token, '')
+        return self._request(method, url, auth=auth, json=json, retry_401=False)
 
     def _build_put_data(self, ids, **kwargs):
         if not ids:
@@ -359,11 +333,28 @@ class Endpoint(object):
     Args:
         client: An instance of API client to use to carry requests out.
     """
-    def __init__(self, client, parent=None):
+    def __init__(self, client, url=None, parent=None):
         self.client = client
         if parent is not None:
             self.parent = parent
+        if url is not None:
+            self.url = url
+            self.get = self._get
+            self.post = self._post
+            self._put = self._put
+            self._delete = self._delete
 
+    def _get(self, *args, **kwargs):
+        return self.client.get(self.url, *args, **kwargs)
+
+    def _post(self, *args, **kwargs):
+        return self.client.post(self.url, *args, **kwargs)
+
+    def _put(self, *args, **kwargs):
+        return self.client.put(self.url, *args, **kwargs)
+
+    def _delete(self, *args, **kwargs):
+        return self.client.put(self.url, *args, **kwargs)
 
 class CRUDEndpoint(Endpoint):
     """CRUD endpoint supporting CRUD convention.
@@ -415,10 +406,9 @@ class CRUDEndpoint(Endpoint):
 
 
     Raises:
-        TypeError: If a parameter passed to either create, get, update or delete
+        `TypeError`: If a parameter passed to either create, get, update or delete
             is of the wrong type.
-        APIRequestException: If the response HTTP status code of an object is
-            not a valid status code.
+        `requests.exceptions.RequestException`: If the underlying request fails.
     """
     def __init__(self, client, single, multiple, parent=None):
         super(CRUDEndpoint, self).__init__(client, parent=parent)
@@ -473,9 +463,9 @@ class CRUDEndpoint(Endpoint):
             params: A dictionary of parameters to filter the GET query on.
 
         Raises:
-            :obj:`APIRequestException`: If one of **params not present in the
-                database model was used (400), if one of **params is
-                read-forbidden, or if the `id` passed doesn't point an existing
+            `requests.exceptions.RequestException`: If one of **params not
+                present in the database model was used (400), if one of **params
+                is read-forbidden, or if the `id` passed doesn't point an existing
                 resource.
 
         Returns:
@@ -544,10 +534,10 @@ class CRUDEndpoint(Endpoint):
             params: A dictionary of parameters to update.
 
         Raises:
-            :obj:`APIRequestException`: If one of **params not present in the
-                database model was used (400), or if one of the resources
-                identified by `id` does not exist (404), or if a parameter was
-                write-forbidden (403).
+            `requests.exceptions.RequestException`: If one of **params not
+                present in the database model was used (400), or if one of the
+                resources identified by `id` does not exist (404), or if a
+                parameter was write-forbidden (403).
 
         Returns:
             list|dict: A list of dict (if  **params is not empty) or a single
@@ -598,9 +588,9 @@ class CRUDEndpoint(Endpoint):
              'http://localhost/api/endpoint/path/to/4']
 
         Raises:
-            :obj:`APIRequestException`: Raised if one of the resources identified
-                by `ids` does not exist, or the database model doesn't implement
-                the `_links` field.
+            `requests.exceptions.RequestException`: Raised if one of the
+                resources identified by `ids` does not exist, or the database
+                model doesn't implement the `_links` field.
         """
         if isinstance(ids, list):
             return [o['_links']['self'] for o in self.get(id=ids)]

@@ -1,3 +1,9 @@
+"""
+exceptions.py
+~
+Maintainer: Olivier Cervello.
+Description: Flask-Flash API HTTP exceptions.
+"""
 import json
 
 class APIException(Exception):
@@ -7,6 +13,7 @@ class APIException(Exception):
     def __init__(self, code, message):
         self._code = code
         self._message = message
+        super(APIException, self).__init__(code, message)
 
     @property
     def code(self):
@@ -52,6 +59,7 @@ class ResourceFieldMissing(APIException):
     def __init__(self, model_name, field, request):
         message = 'Field %s missing in %s request.'.format(model_name.title(), field, request)
         super(ResourceFieldMissing, self).__init__(403, message)
+
 
 class FilterInvalid(APIException):
     def __init__(self, model_name, param):

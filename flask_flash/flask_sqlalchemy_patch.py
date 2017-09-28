@@ -1,21 +1,25 @@
-"""This Flask-SQLAlchemy patch adds the ability to add 'Base' db models using
-the Flask-SQLAlchemy `db` object:
-
-from sqlalchemy.ext.declarative import declarative_base
-from flask_flash import db
-Base = declarative_base()
-
-class MyModel(Base):
-    pass
-
-db.register_base(MyModel)
+"""
+flask_sqlalchemy_patch.py
+~
+Maintainer: Olivier Cervello.
+Description:
+    This Flask-SQLAlchemy patch adds the ability to add 'Base' db models using
+    the Flask-SQLAlchemy `db` object:
+Example use:
+```
+    from sqlalchemy.ext.declarative import declarative_base
+    from flask_flash import db
+    Base = declarative_base()
+    class MyModel(Base):
+        pass
+    db.register_base(MyModel)
+```
 """
 import flask_sqlalchemy
 
 class SQLAlchemy(flask_sqlalchemy.SQLAlchemy):
     def __init__(self, app=None, use_native_unicode=True, session_options=None,
                  metadata=None, query_class=flask_sqlalchemy.BaseQuery, model_class=flask_sqlalchemy.Model):
-
         self.use_native_unicode = use_native_unicode
         self.Query = query_class
         self.session = self.create_scoped_session(session_options)
@@ -58,8 +62,8 @@ class SQLAlchemy(flask_sqlalchemy.SQLAlchemy):
     def register_base(self, Base):
         """Register an external raw SQLAlchemy declarative base.
         Allows usage of the base with our session management and
-        adds convenience query property using self.Query by default."""
-
+        adds convenience query property using self.Query by default.
+        """
         self.external_bases.append(Base)
         for c in Base._decl_class_registry.values():
             if isinstance(c, type):

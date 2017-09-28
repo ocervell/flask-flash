@@ -1,3 +1,9 @@
+"""
+extensions.py
+~
+Maintainer: Olivier Cervello.
+Description: Definition of all Flask-Flash API resources.
+"""
 import logging, pprint, json, yaml, time
 from flask import g, request, Response, url_for, jsonify, current_app
 from flask_restful import abort, Resource as FlaskRestfulResource
@@ -132,6 +138,7 @@ class Resource(FlaskRestfulResource):
 
 class Index(Resource):
     """A Flash resource listing all the endpoints."""
+    pass
 
 
 class Protected(Resource):
@@ -308,7 +315,6 @@ class CRUD(Resource):
                     log.debug("Key: %s | Op: %s | Value: %s" % (key, op, values))
                     if isinstance(values, basestring): values = values.split(',')
                 except ValueError as e:
-                    log.exception(e)
                     raise FilterInvalid(self.model_title, raw)
                 column = getattr(self.model, key, None)
                 if column is None:

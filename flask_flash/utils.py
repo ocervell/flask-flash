@@ -1,3 +1,9 @@
+"""
+utils.py
+~
+Maintainer: Olivier Cervello.
+Description: Utility functions used by Flask-Flash.
+"""
 from datetime import datetime
 import logging
 from flask import request

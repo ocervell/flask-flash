@@ -1,3 +1,9 @@
+"""
+decorators.py
+~
+Maintainer: Olivier Cervello.
+Description: Flask-Flash decorators.
+"""
 import time
 import logging
 from functools import wraps
@@ -80,3 +86,12 @@ def add_schema(cls):
             model = cls
     cls.Schema = Schema
     return cls
+
+def shared(theClass):
+    classInstances = {}
+    def getInstance(*args, **kwargs):
+        key = (theClass, args, str(kwargs))
+        if key not in classInstances:
+            classInstances[key] = theClass(*args, **kwargs)
+        return classInstances[key]
+    return getInstance
