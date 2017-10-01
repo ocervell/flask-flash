@@ -77,7 +77,7 @@ class Flash(object):
         # Create Flask-Script Server
         host = kwargs.get('host', DEFAULT_HOST)
         port = kwargs.get('port', DEFAULT_PORT)
-        # self.server = Server(host, port)
+        self.server = Server(host, port)
 
         # Create Flask-Flash API client
         self.client = self.create_api_client(host + ':' + str(port))
@@ -88,7 +88,7 @@ class Flash(object):
         # Create Flask-Script manager
         self.manager = Manager(self.app)
         self.shell = Shell(make_context=lambda: dict(app=self.app, db=self.db, c=self.client))
-        # self.manager.add_command("runserver", self.server)
+        self.manager.add_command("runserver", self.server)
         self.manager.add_command("shell", self.shell)
         self.manager.add_command("db", MigrateCommand)
 
