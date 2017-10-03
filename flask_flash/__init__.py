@@ -18,7 +18,7 @@ import os, logging
 import inflect
 
 log = logging.getLogger(__name__)
-DEFAULT_PROFILE = os.environ.get('FLASK_API_PROFILE', 'default')
+DEFAULT_PROFILE = os.environ.get('PROFILE', 'default')
 DEFAULT_HOST = '0.0.0.0'
 DEFAULT_PORT = 5001
 
@@ -149,7 +149,7 @@ class Flash(object):
         log.debug("Registered %s extensions" % c)
 
 class BaseConfig(object):
-    SECRET_KEY = 'ea0d47d240455e609e5201e66f3838c36c5c37fac2abe306'
+    SECRET_KEY = 'longrandomstringhere'
     SQLALCHEMY_COMMIT_ON_TEARDOWN = True
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SQLALCHEMY_MAX_INPUT = 998
