@@ -114,6 +114,9 @@ def format_as_table(data,
         sort_order_reverse - Default sort order is ascending, if
             True sort order will change to descending. (Type: Boolean)
     """
+    if isinstance(data, dict):
+        data = [data]
+
     # Sort the data if a sort key is specified (default sort order
     # is ascending)
     if sort_by_key:
@@ -163,7 +166,14 @@ def print_endpoint(endpoint, default_keys=[], **user_filters):
         'only': keys
     }
     filters.update(user_filters)
+    print("Query:\n  Endpoint '%s'\n  Filters: %s\n" % (endpoint.url, filters))
     data = endpoint.get(**filters)
-    keys = [k for k in data[0].keys() if k in keys]
+    if not data:
+        print "No data found !"
+        return
+    if isinstance(data, list):
+        keys = [k for k in data[0].keys() if k in keys]
+    else:
+        keys = [k for k in data.keys() if k in keys]
     headers = [c.capitalize() for c in keys]
-    print format_as_table(data, data[0].keys(), headers)
+    print format_as_table(data, keys, headers)

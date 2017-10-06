@@ -25,6 +25,15 @@ class FlaskTestCase(unittest.TestCase):
         with self.app.app_context():
             self.db.session.remove()
 
+    def test_index(self):
+        self.assertDictEqual(
+            self.client.get('/index'),
+            {
+                'name': 'examples/app1',
+                'message': 'It works !'
+            }
+        )
+
     def test_scenario_1(self):
         nusers = random.randint(0, 100)
         pks = []
