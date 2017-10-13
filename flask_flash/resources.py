@@ -404,6 +404,7 @@ class CRUD(Resource):
     @errorhandler
     def put(self, id=None):
         data = self.get_data()
+        data = self._preprocess(data)
 
         # Loop through updates
         objs = []
@@ -457,6 +458,7 @@ class CRUD(Resource):
     @errorhandler
     def post(self):
         data = self.get_data()
+        data = self._preprocess(data)
 
         log.debug("POST | {model} | \n{data}".format(model=self.model_title, data=pprint.pformat((data))))
 
@@ -503,6 +505,12 @@ class CRUD(Resource):
     #---------#
     # PRIVATE #
     #---------#
+    def _preprocess(self, data):
+        processors = getattr(self, request.method.lower() + '_preprocessors', [])
+        for p in processors:
+            data = p(data)
+        return data
+
     def _parse_args(self):
         args = self.parser.parse_args()
         model_filters, unique_args = {}, {}

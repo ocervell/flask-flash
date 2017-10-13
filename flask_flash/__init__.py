@@ -153,7 +153,7 @@ class BaseConfig(object):
     SQLALCHEMY_COMMIT_ON_TEARDOWN = True
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SQLALCHEMY_MAX_INPUT = 998
-    SQLALCHEMY_DATABASE_URI = 'sqlite:///database.sqlite'
+    SQLALCHEMY_DATABASE_URI = 'sqlite:////tmp/database.sqlite'
     CACHE_CONFIG = {
         'CACHE_TYPE': 'redis',
         'CACHE_REDIS_HOST': 'localhost',
