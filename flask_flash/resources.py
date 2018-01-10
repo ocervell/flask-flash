@@ -94,8 +94,8 @@ class Resource(FlaskRestfulResource):
         """
         fragments = re.findall('[A-Z][^A-Z]*', cls.__name__)
         if fragments:
-            return join(cls.url_prefix, *fragments).lower()
-        return join(cls.url_prefix, cls.__name__).lower()
+            return join(cls.url_prefix, *fragments).lower().replace('\\', '/')
+        return join(cls.url_prefix, cls.__name__).lower().replace('\\', '/')
 
     # @classmethod
     # TODO: Work on autogeneration of resource names for non-CRUD resources
@@ -125,6 +125,7 @@ class Resource(FlaskRestfulResource):
             urls = [join(cls.url_prefix, u.rstrip('/')) for u in cls.url]
         else:
             urls = [join(cls.url_prefix, cls.url.rstrip('/'))]
+        urls = map(lambda x: x.replace('\\', '/'), urls)
         return urls
 
     @classmethod
@@ -266,6 +267,10 @@ class CRUD(Resource):
             multiple = join(cls.url_prefix, urls[1])
         else:
             raise TypeError("`url` must be either omitted or a tuple of size 2 for CRUD resources.")
+
+        # Replace \ by / on Windows
+        single = single.replace('\\', '/')
+        multiple = multiple.replace('\\', '/')
         return [single, multiple]
 
     @classmethod
