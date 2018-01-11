@@ -198,6 +198,12 @@ class CRUD(Resource):
     """
     query = None
 
+    """bool: cached, optional
+    Use cache on GET queries (recommended).
+    Cache is cleared on POST / PUT / DELETE
+    """
+    cached = True
+
     """dict: SQLALCHEMY_OPERATORS, fixed
     A list of SQLAlchemy operator translations for query.
     """
@@ -389,7 +395,7 @@ class CRUD(Resource):
         }
         return resp
 
-    # @cache.cached(query_string=True, timeout=10)
+    @cache.cached(query_string=True, timeout=10)
     @json
     @errorhandler
     def get(self, id=None):
@@ -453,7 +459,7 @@ class CRUD(Resource):
         db.session.commit()
 
         # Clear cache
-        # if self.cached: cache.clear()
+        if self.cached: cache.clear()
 
         # Set 'many' option for jsonify
         self.opts['many'] = (id is None)
