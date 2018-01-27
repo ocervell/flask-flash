@@ -58,8 +58,11 @@ class Flash(object):
         """
         # Init app config
         cfg = self.config[self.profile]
-        cfg.init_app(self.app)
         self.app.config.from_object(cfg)
+        try:
+            cfg.init_app(self.app)
+        except AttributeError:
+            log.info("`init_app` is not a method of the config class. Skipping.")
 
         # Create Flask-Restful API
         bp = Blueprint('api', __name__)
@@ -135,10 +138,7 @@ class Flash(object):
         EXTENSIONS_API.extend(extensions)
         for e in EXTENSIONS_API:
             if isinstance(e, tuple) and e[1] == 'cache': # Flask-Cache extension
-                try:
-                    e[0].init_app(self.app, config=self.app.config['CACHE_CONFIG'])
-                except AssertionError:
-                    continue
+                e[0].init_app(self.app, config=self.app.config.get('CACHE_CONFIG', BaseConfig.CACHE_CONFIG))
                 c += 1
             else:
                 try:
