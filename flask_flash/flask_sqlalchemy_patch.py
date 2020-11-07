@@ -65,7 +65,7 @@ class SQLAlchemy(flask_sqlalchemy.SQLAlchemy):
         adds convenience query property using self.Query by default.
         """
         self.external_bases.append(Base)
-        for c in Base._decl_class_registry.values():
+        for c in list(Base._decl_class_registry.values()):
             if isinstance(c, type):
                 if not hasattr(c, 'query') and not hasattr(c, 'query_class'):
                     c.query_class = self.Query

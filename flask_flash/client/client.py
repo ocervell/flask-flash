@@ -269,7 +269,7 @@ class BaseClient(object):
             ids = [ids]
         data = []
         for id in ids:
-            action_data = {k: v for k, v in kwargs.items()}
+            action_data = {k: v for k, v in list(kwargs.items())}
             action_data['id'] = id
             data.append(action_data)
         return data
@@ -277,11 +277,11 @@ class BaseClient(object):
     def _construct_query_urls(self, base, **kwargs):
         query_urls = []
         query_url = base + '?'
-        for k, v in kwargs.items():
-            if isinstance(k, basestring):
+        for k, v in list(kwargs.items()):
+            if isinstance(k, str):
                 k = str(k)
             if isinstance(v, list):
-                v = map(str, v)
+                v = list(map(str, v))
                 v = ','.join(v)
             if k == 'id':
                 continue
@@ -475,7 +475,7 @@ class CRUDEndpoint(Endpoint):
 
         # Convert id if necessary
         id = id or params.get('id')
-        if isinstance(id, int) or isinstance(id, basestring):
+        if isinstance(id, int) or isinstance(id, str):
             return self.client.get('{0}/{1}'.format(self.single, id))
         params['id'] = id
 
@@ -499,7 +499,7 @@ class CRUDEndpoint(Endpoint):
 
     def get_or_create(self, eq=[], **kwargs):
         if eq:
-            filters = { k:v for k,v in kwargs.items() if k in eq }
+            filters = { k:v for k,v in list(kwargs.items()) if k in eq }
             obj = self.get(**filters)
             if obj:
                 return obj[0]
@@ -549,7 +549,7 @@ class CRUDEndpoint(Endpoint):
         if isinstance(id, list):
             json = self.client._build_put_data(id, **params)
             return self.client.put('{0}'.format(self.multiple), json=json, **filters)
-        elif isinstance(id, int) or isinstance(id, basestring):
+        elif isinstance(id, int) or isinstance(id, str):
             return self.client.put('{0}/{1}'.format(self.single, id), json=params, **filters)
         else:
             raise TypeError("`update` first argument `id` must be a list or an int")
@@ -610,7 +610,7 @@ class CRUDEndpoint(Endpoint):
                 filters['match'] = [match]
             return self.client.delete_with_params('{0}'.format(self.multiple), **filters)
 
-        elif isinstance(ids, int) or isinstance(ids, basestring):
+        elif isinstance(ids, int) or isinstance(ids, str):
             return self.client.delete('{0}/{1}'.format(self.single, ids))
 
         else:

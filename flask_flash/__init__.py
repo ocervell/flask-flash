@@ -4,11 +4,11 @@ __init__.py
 Maintainer: Olivier Cervello.
 Description: Flask-Flash API constructor and default config.
 """
-from resources import *
-from extensions import *
-from exceptions import *
-from client import *
-from utils import *
+from flask_flash.resources import *
+from flask_flash.extensions import *
+from flask_flash.exceptions import *
+from flask_flash.client import *
+from flask_flash.utils import *
 from flask import Blueprint, Flask, session
 from flask_restful import Api
 from flask_script import Manager, Shell, Server, prompt_bool
@@ -111,7 +111,7 @@ class Flash(object):
                     if not name in endpoints:
                         endpoints[name] = []
                     endpoints[name].append(endpoint)
-        for endpoint_name, endpoint_routes in endpoints.items():
+        for endpoint_name, endpoint_routes in list(endpoints.items()):
             c.register(endpoint_name, CRUDEndpoint, endpoint_routes)
         return c
 

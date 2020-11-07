@@ -7,8 +7,8 @@ Description: Utility functions used by Flask-Flash.
 from datetime import datetime
 import logging
 from flask import request
-import urllib
-from extensions import cache
+import urllib.request, urllib.parse, urllib.error
+from flask_flash.extensions import cache
 
 log = logging.getLogger(__name__)
 
@@ -40,11 +40,11 @@ def reprd(d):
         return []
     if isinstance(d, list):
         return [reprd(e) for e in d]
-    data = {k: v for k, v in d.items()}
-    for k, v in data.items():
+    data = {k: v for k, v in list(d.items())}
+    for k, v in list(data.items()):
         if k == 'id':
             continue
-        if isinstance(v, unicode) and len(v) > 20:
+        if isinstance(v, str) and len(v) > 20:
             data[k] = v[:10] + '...' + v[-10:]
         if isinstance(v, datetime):
             data[k] = print_datetime(v)
@@ -64,12 +64,12 @@ def convert(data):
     """Convert all unicode strings to strings in any iterable, mapping or
     basestring."""
     import collections
-    if isinstance(data, basestring):
+    if isinstance(data, str):
         return str(data)
     elif isinstance(data, collections.Mapping):
-        return dict(map(convert, data.iteritems()))
+        return dict(list(map(convert, iter(data.items()))))
     elif isinstance(data, collections.Iterable):
-        return type(data)(map(convert, data))
+        return type(data)(list(map(convert, data)))
     else:
         return data
 
@@ -135,9 +135,9 @@ def format_as_table(data,
         # Create a list of dictionary from the keys and the header and
         # insert it at the beginning of the list. Do the same for the
         # divider and insert below the header.
-        header_divider = dict(zip(keys, header_divider))
+        header_divider = dict(list(zip(keys, header_divider)))
         data.insert(0, header_divider)
-        header = dict(zip(keys, header))
+        header = dict(list(zip(keys, header)))
         data.insert(0, header)
 
     column_widths = []
@@ -145,7 +145,7 @@ def format_as_table(data,
         column_widths.append(max(len(str(column[key])) for column in data))
 
     # Create a tuple pair of key and the associated column width for it
-    key_width_pair = zip(keys, column_widths)
+    key_width_pair = list(zip(keys, column_widths))
 
     format = ('%-*s ' * len(keys)).strip() + '\n'
     formatted_data = ''
@@ -166,14 +166,14 @@ def print_endpoint(endpoint, default_keys=[], **user_filters):
         'only': keys
     }
     filters.update(user_filters)
-    print("Query:\n  Endpoint '%s'\n  Filters: %s\n" % (endpoint.url, filters))
+    print(("Query:\n  Endpoint '%s'\n  Filters: %s\n" % (endpoint.url, filters)))
     data = endpoint.get(**filters)
     if not data:
-        print "No data found !"
+        print("No data found !")
         return
     if isinstance(data, list):
-        keys = [k for k in data[0].keys() if k in keys]
+        keys = [k for k in list(data[0].keys()) if k in keys]
     else:
-        keys = [k for k in data.keys() if k in keys]
+        keys = [k for k in list(data.keys()) if k in keys]
     headers = [c.capitalize() for c in keys]
-    print format_as_table(data, keys, headers)
+    print((format_as_table(data, keys, headers)))

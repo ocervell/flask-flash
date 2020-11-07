@@ -7,12 +7,12 @@ Description: Flask-Flash decorators.
 import time
 import logging
 from functools import wraps
-from exceptions import APIException
+from flask_flash.exceptions import APIException
 from sqlalchemy.exc import SQLAlchemyError
 from flask_restful import abort
 from flask import request, jsonify
-from extensions import db, ma
-import urlparse
+from flask_flash.extensions import db, ma
+import urllib.parse
 from os.path import join
 import pprint
 
@@ -26,9 +26,9 @@ def errorhandler(f):
             start = time.time()
             ret = f(self, *args, **kwds)
             end = time.time()
-            url = urlparse.urlparse(request.url)
+            url = urllib.parse.urlparse(request.url)
             url_str = url.path
-            params = urlparse.parse_qs(url.query)
+            params = urllib.parse.parse_qs(url.query)
             data = request.get_json()
             log.info("{fname} | {url} | {duration:.4f}s".format(
                 fname=f.__name__.upper(),
@@ -70,7 +70,7 @@ def json(f):
             'dump_only',
             'partial'
         ]
-        schema_opts = { k: v for k, v in self.opts.items() if k in marshmallow_fields }
+        schema_opts = { k: v for k, v in list(self.opts.items()) if k in marshmallow_fields }
         if schema_opts.get('many', False) is False and \
                 isinstance(objs, list) and \
                 len(objs) == 1:

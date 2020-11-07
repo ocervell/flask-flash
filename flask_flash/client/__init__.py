@@ -1,2 +1,2 @@
-from agent import *
-from client import *
+from .agent import *
+from .client import *

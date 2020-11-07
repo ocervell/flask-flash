@@ -9,7 +9,7 @@ from requests.packages.urllib3.util.retry import Retry
 from requests.adapters import HTTPAdapter
 import pprint
 import logging
-from urlparse import urlparse
+from urllib.parse import urlparse
 import re
 import time
 import sys
@@ -66,7 +66,7 @@ class Agent(object):
         try:
             r.raise_for_status()
         except requests.exceptions.RequestException as e:
-            raise type(e), type(e)(e.message + ' | Additional data: ' + r.content, response=r), sys.exc_info()[2]
+            raise type(e)(type(e)(e.message + ' | Additional data: ' + r.content, response=r)).with_traceback(sys.exc_info()[2])
         return r
 
     def get_url(self, url, absolute=False):

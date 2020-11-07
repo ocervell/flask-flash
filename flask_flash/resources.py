@@ -10,10 +10,10 @@ from flask_restful import abort, Resource as FlaskRestfulResource
 from flask_restful.reqparse import RequestParser
 from sqlalchemy import desc, asc
 from sqlalchemy.orm.session import make_transient
-from extensions import db, auth, cache, ma
-from utils import *
-from decorators import json, errorhandler, add_schema
-from exceptions import NoPostData, SchemaValidationError, ResourceNotFound, \
+from flask_flash.extensions import db, auth, cache, ma
+from flask_flash.utils import *
+from flask_flash.decorators import json, errorhandler, add_schema
+from flask_flash.exceptions import NoPostData, SchemaValidationError, ResourceNotFound, \
                         ResourceFieldForbidden, FilterInvalid, \
                         FilterNotSupported
 from datetime import datetime
@@ -125,7 +125,7 @@ class Resource(FlaskRestfulResource):
             urls = [join(cls.url_prefix, u.rstrip('/')) for u in cls.url]
         else:
             urls = [join(cls.url_prefix, cls.url.rstrip('/'))]
-        urls = map(lambda x: x.replace('\\', '/'), urls)
+        urls = [x.replace('\\', '/') for x in urls]
         return urls
 
     @classmethod
@@ -230,8 +230,8 @@ class CRUD(Resource):
         # Set primary key name directly from db model
         self.pk = self.pk or inspect(self.model).primary_key[0].name
         self.model_title = self.model.__name__
-        self.columns = inspect(self.model).columns.keys()
-        self.relationships = inspect(self.model).relationships.keys()
+        self.columns = list(inspect(self.model).columns.keys())
+        self.relationships = list(inspect(self.model).relationships.keys())
         self.parser = RequestParser()
         for c in self.columns:
             self.parser.add_argument(c, type=liststr, default=None, location='args')
@@ -248,7 +248,7 @@ class CRUD(Resource):
         self.fields, self.opts = self._parse_args()
         self.request_args = self.fields.copy()
         self.request_args.update(self.opts)
-        self.request_args = {k:v for k,v in self.request_args.items() if v}
+        self.request_args = {k:v for k,v in list(self.request_args.items()) if v}
 
     @classmethod
     def get_urls(cls):
@@ -309,7 +309,7 @@ class CRUD(Resource):
             self.raise_if_forbidden(fields)
             log.debug("Filtering on columns: %s" % fields)
             fields = self.convert_fields(fields)
-            for k, v in fields.items():
+            for k, v in list(fields.items()):
                 column = getattr(self.model, k, None)
                 if isinstance(v, list):
                     query = query.filter(column.in_(v))
@@ -324,7 +324,7 @@ class CRUD(Resource):
                 try:
                     key, op, values = tuple(raw)
                     log.debug("Key: %s | Op: %s | Value: %s" % (key, op, values))
-                    if isinstance(values, basestring): values = values.split(',')
+                    if isinstance(values, str): values = values.split(',')
                 except ValueError as e:
                     raise FilterInvalid(self.model_title, raw)
                 column = getattr(self.model, key, None)
@@ -355,8 +355,7 @@ class CRUD(Resource):
                         values = [values]
                     for v in values:
                         try:
-                            attr = list(filter(lambda e: hasattr(column, e % op),
-                                              ['%s', '%s_', '__%s__']))[0] % op
+                            attr = list([e for e in ['%s', '%s_', '__%s__'] if hasattr(column, e % op)])[0] % op
                         except IndexError:
                             raise FilterNotSupported(self.model_title, op)
                         query = query.filter(getattr(column, attr)(v))
@@ -435,7 +434,7 @@ class CRUD(Resource):
 
             # Relationship updates
             if self.opts['_action'] == 'append':
-                rel_updates = {k: v for k, v in d.items() if k in self.relationships}
+                rel_updates = {k: v for k, v in list(d.items()) if k in self.relationships}
                 new, errors = self.schema().load(rel_updates, session=db.session, partial=True)
                 if errors:
                     raise SchemaValidationError(self.model_title, errors=errors)
@@ -444,7 +443,7 @@ class CRUD(Resource):
                     rel_old = getattr(obj, name)
                     rel_new = getattr(new, name)
                     rel_old.extend(rel_new)
-                d = {k: v for k, v in d.items() if k not in rel_updates}
+                d = {k: v for k, v in list(d.items()) if k not in rel_updates}
 
             # Other updates
             _, errors = self.schema().load(d, instance=obj, session=db.session, partial=True)
@@ -525,7 +524,7 @@ class CRUD(Resource):
     def _parse_args(self):
         args = self.parser.parse_args()
         model_filters, unique_args = {}, {}
-        for k, v in args.items():
+        for k, v in list(args.items()):
             if k in self.columns:
                 if v is not None:
                     model_filters[k] = v
@@ -543,10 +542,10 @@ class CRUD(Resource):
             fields (dict): A dict of column name / value(s).
         """
         self.raise_if_forbidden(fields)
-        fields = {k: v for k, v in fields.items() if k in self.columns}
+        fields = {k: v for k, v in list(fields.items()) if k in self.columns}
         res = {k: None for k in fields}
         schema = self.schema(partial=True)
-        for k, values in fields.items():
+        for k, values in list(fields.items()):
             try:
                 converted = schema.fields[k]._deserialize(values, None, None)
                 res[k] = converted
@@ -595,7 +594,7 @@ class CRUD(Resource):
             pass
         if type == 'write': # adding `dump_only` (read-only) fields from schema
             fields = self.schema().fields
-            dump_only = filter(lambda x: fields[x].dump_only, fields)
+            dump_only = [x for x in fields if fields[x].dump_only]
             exclude.extend(dump_only)
         return exclude
 
@@ -615,7 +614,7 @@ class CRUD(Resource):
         endpoint =  url_for('api.' + self.resource_name.lower(), **params)
         key_prefix = config['CACHE_KEY_PREFIX'] + endpoint
         redis_client = Redis(config['CACHE_REDIS_HOST'], config['CACHE_REDIS_PORT'])
-        keys = [key for key in redis_client.keys() if key.startswith(key_prefix)]
+        keys = [key for key in list(redis_client.keys()) if key.startswith(key_prefix)]
         nkeys = len(keys)
         for key in keys:
             redis_client.delete(key)
